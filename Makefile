@@ -2,7 +2,7 @@
 # GLOBALS                                                                       #
 #################################################################################
 
-PROJECT_NAME = multimodal_e-health_classification
+PROJECT_NAME = Dynamic-Ensemble-Learning-for-Credit-Card-Fraud-Detection
 PYTHON_VERSION = 3.10
 PYTHON_INTERPRETER = python
 
