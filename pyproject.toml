@@ -5,9 +5,9 @@ build-backend = "flit_core.buildapi"
 [project]
 name = "src"
 version = "0.0.1"
-description = "A short description of the project."
+description = "Dynamic Ensemble Learning for Credit Card Fraud Detection"
 authors = [
-  { name = "Raffaele Scaringi" },
+  { name = "Leonardo Saccotelli" },
 ]
 license = { file = "LICENSE" }
 readme = "README.md"
