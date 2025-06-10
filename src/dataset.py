@@ -1,6 +1,8 @@
 from pathlib import Path
+
 from loguru import logger
 import typer
+
 import kagglehub
 
 from src.config import PROCESSED_DATA_DIR, RAW_DATA_DIR
@@ -11,7 +13,6 @@ app = typer.Typer()
 @app.command()
 def main(
     input_path: Path = RAW_DATA_DIR / "creditcardfraud.csv",
-    output_path: Path = PROCESSED_DATA_DIR / "dataset.csv",
 ):
     # Check if the raw data exists.
     # If raw data does not exist, try to download from kagglehub
