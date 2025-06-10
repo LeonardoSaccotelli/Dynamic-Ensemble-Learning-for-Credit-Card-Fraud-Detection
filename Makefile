@@ -4,14 +4,14 @@
 
 PROJECT_NAME = Dynamic-Ensemble-Learning-for-Credit-Card-Fraud-Detection
 PYTHON_VERSION = 3.10
-PYTHON_INTERPRETER = python
+PYTHON_INTERPRETER = python # Which Python command to use (usually just python, but can be changed for different systems).
 
 #################################################################################
 # COMMANDS                                                                      #
 #################################################################################
 
 
-## Install Python dependencies
+## Install Python dependencies  (run 'make requirements' to install dependencies)
 .PHONY: requirements
 requirements:
 	$(PYTHON_INTERPRETER) -m pip install -U pip
@@ -20,7 +20,7 @@ requirements:
 
 
 
-## Delete all compiled Python files
+## Delete all compiled Python files: .pyc, .pyo, __pycache__ (use 'make clean' to clean)
 .PHONY: clean
 clean:
 	find . -type f -name "*.py[co]" -delete
@@ -43,7 +43,7 @@ format:
 
 
 
-## Set up Python interpreter environment
+## Set up Python interpreter environment (use 'make create_environment' to create a new environments)
 .PHONY: create_environment
 create_environment:
 	@bash -c "if [ ! -z `which virtualenvwrapper.sh` ]; then source `which virtualenvwrapper.sh`; mkvirtualenv $(PROJECT_NAME) --python=$(PYTHON_INTERPRETER); else mkvirtualenv.bat $(PROJECT_NAME) --python=$(PYTHON_INTERPRETER); fi"
@@ -57,7 +57,7 @@ create_environment:
 #################################################################################
 
 
-## Make dataset
+## Make dataset (use 'make dataset' to ...)
 .PHONY: data
 data: requirements
 	$(PYTHON_INTERPRETER) src/dataset.py
