@@ -5,7 +5,7 @@ import typer
 
 import kagglehub
 
-from src.config import PROCESSED_DATA_DIR, RAW_DATA_DIR
+from src.config import RAW_DATA_DIR
 
 app = typer.Typer()
 
