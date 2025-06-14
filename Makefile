@@ -57,11 +57,15 @@ create_environment:
 #################################################################################
 
 
-## Make dataset (use 'make dataset' to ...)
+## Make dataset (use 'make dataset' to generate raw dataset)
 .PHONY: data
 data: requirements
 	$(PYTHON_INTERPRETER) src/dataset.py
 
+## Clean the dataset (use 'make cleaning' to generate cleaned interim data)
+.PHONY: cleaning
+cleaning:
+	$(PYTHON_INTERPRETER) src/cleaning.py
 
 #################################################################################
 # Self Documenting Commands                                                     #
