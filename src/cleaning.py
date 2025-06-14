@@ -14,6 +14,8 @@ def main(
     input_path: Path = RAW_DATA_DIR / "creditcardfraud.csv",
     interim_path: Path = INTERIM_DATA_DIR / "creditcardfraud_cleaned.csv"
 ):
+    logger.info("Cleaning dataset...")
+
     logger.info(f"Loading raw dataset from: {input_path}")
     df = load_csv(input_path, delimiter=",")
     logger.info(f"Initial shape (rows, columns): {df.shape}")

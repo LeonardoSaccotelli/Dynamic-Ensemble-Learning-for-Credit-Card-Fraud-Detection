@@ -14,6 +14,8 @@ app = typer.Typer()
 def main(
     input_path: Path = RAW_DATA_DIR / "creditcardfraud.csv",
 ):
+    logger.info("Creating dataset...")
+
     # Check if the raw data exists.
     # If raw data does not exist, try to download from kagglehub
     if not input_path.exists():
