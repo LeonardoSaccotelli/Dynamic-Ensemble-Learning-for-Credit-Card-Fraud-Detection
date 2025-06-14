@@ -12,7 +12,7 @@ app = typer.Typer()
 @app.command()
 def main(
     input_path: Path = RAW_DATA_DIR / "creditcardfraud.csv",
-    interim_path: Path = INTERIM_DATA_DIR / "creditcardfraud_cleaned.csv"
+    output_path: Path = INTERIM_DATA_DIR / "creditcardfraud_cleaned.csv"
 ):
     logger.info("Cleaning dataset...")
 
@@ -62,8 +62,8 @@ def main(
         logger.info(f" - Class {label}: {count} ({count / total * 100:.3f}%)")
 
     # Save cleaned dataset
-    logger.info(f"Saving cleaned dataset to: {interim_path}")
-    save_csv(df, interim_path, index=False)
+    logger.info(f"Saving cleaned dataset to: {output_path}")
+    save_csv(df, output_path, index=False)
     logger.success("Data cleaning complete.")
 
 
