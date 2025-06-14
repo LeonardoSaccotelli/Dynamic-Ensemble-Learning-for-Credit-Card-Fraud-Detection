@@ -64,6 +64,7 @@ def main(
     # Save cleaned dataset
     logger.info(f"Saving cleaned dataset to: {output_path}")
     save_csv(df, output_path, index=False)
+
     logger.success("Data cleaning complete.")
 
 
