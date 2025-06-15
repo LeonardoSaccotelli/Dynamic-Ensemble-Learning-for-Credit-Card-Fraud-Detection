@@ -14,6 +14,16 @@ app = typer.Typer()
 def main(
     input_path: Path = RAW_DATA_DIR / "creditcardfraud.csv",
 ):
+    """
+    Check the presence of raw dataset. If not present, it will download the dataset
+    directly from Kaggle. It will be stored in RAW_DATA_DIR.
+
+    Parameters
+    ----------
+    input_path : Path
+        Path to the cleaned dataset.
+    """
+
     logger.info("Creating dataset...")
 
     # Check if the raw data exists.
