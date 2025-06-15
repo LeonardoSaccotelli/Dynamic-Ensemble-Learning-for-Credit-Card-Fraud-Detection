@@ -14,6 +14,18 @@ def main(
     input_path: Path = RAW_DATA_DIR / "creditcardfraud.csv",
     output_path: Path = INTERIM_DATA_DIR / "creditcardfraud_cleaned.csv"
 ):
+    """
+    Perform data cleaning phase. It will check for null rows or columns.
+    It will also check for duplicated rows. Both null or duplicated rows are removed.
+
+    Parameters
+    ----------
+    input_path : Path
+        Path to the raw dataset.
+    output_path : Path
+        Path to save the cleaned dataset
+    """
+
     logger.info("Cleaning dataset...")
 
     logger.info(f"Loading raw dataset from: {input_path}")
