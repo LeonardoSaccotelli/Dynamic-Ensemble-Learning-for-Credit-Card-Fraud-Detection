@@ -67,6 +67,11 @@ data: requirements
 cleaning:
 	$(PYTHON_INTERPRETER) src/cleaning.py
 
+## Create the features to be used to model (use 'make features' to generate final features data)
+.PHONY: features
+features:
+	$(PYTHON_INTERPRETER) src/features.py
+
 #################################################################################
 # Self Documenting Commands                                                     #
 #################################################################################
