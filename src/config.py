@@ -21,6 +21,18 @@ MODELS_DIR = PROJ_ROOT / "models"
 REPORTS_DIR = PROJ_ROOT / "reports"
 FIGURES_DIR = REPORTS_DIR / "figures"
 
+# EXPERIMENT SETTINGS
+RANDOM_STATE = 42
+CV_N_SPLITS = 10
+CV_N_REPEATS = 10
+DSEL_SIZE = 0.2
+
+
+# MODELS NAME
+BASE_MODELS = ["RandomForestClassifier", "SVC"]
+DES_MODELS = ["OLA", "KNORA"]
+
+
 # If tqdm is installed, configure loguru with tqdm.write
 # https://github.com/Delgan/loguru/issues/135
 try:
