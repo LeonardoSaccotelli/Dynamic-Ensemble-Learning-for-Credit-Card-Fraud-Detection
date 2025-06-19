@@ -3,6 +3,8 @@ from pathlib import Path
 from dotenv import load_dotenv
 from loguru import logger
 
+from datetime import datetime
+
 # Load environment variables from .env file if it exists
 load_dotenv()
 
@@ -21,20 +23,28 @@ MODELS_DIR = PROJ_ROOT / "models"
 REPORTS_DIR = PROJ_ROOT / "reports"
 FIGURES_DIR = REPORTS_DIR / "figures"
 
+# GENERAL SETTINGS
+RUN_ID = f"run_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+RANDOM_STATE = 42
+
 # PIPELINE AND FEATURES SELECTION
-NUMERICAL_FEATURES_TO_NORMALIZE = ["LogAmount"]
+NUMERICAL_FEATURES_TO_NORMALIZE = ["Log_Amount"]
 K_BEST_TO_KEEP = 20
 
 # EXPERIMENT AND EVALUATION SETTINGS
-RANDOM_STATE = 42
-CV_N_SPLITS = 10
-CV_N_REPEATS = 10
+CV_N_SPLITS = 2
+CV_N_REPEATS = 2
 DSEL_SIZE = 0.2
 
-# MODELS TO TRAIN
-BASE_MODELS = ["RandomForestClassifier", "SVC"]
-DES_MODELS = ["OLA", "KNORA"]
+# HYPERPARAMETER TUNING SETTINGS FOR RANDOMIZED_SEARCH_CV
+N_ITER_TUNING = 2
+CV_TUNING = 5
+SCORING_TUNING = "f1"
+N_JOBS_TUNING = -1
 
+# MODELS TO TRAIN
+BASE_MODELS = ["RandomForestClassifier"]
+DES_MODELS = ["OLA", "KNORA"]
 
 # If tqdm is installed, configure loguru with tqdm.write
 # https://github.com/Delgan/loguru/issues/135
