@@ -38,13 +38,20 @@ DSEL_SIZE = 0.2
 
 # HYPERPARAMETER TUNING SETTINGS FOR RANDOMIZED_SEARCH_CV
 N_ITER_TUNING = 2
-CV_TUNING = 5
+CV_TUNING = 2
 SCORING_TUNING = "f1"
 N_JOBS_TUNING = -1
 
 # MODELS TO TRAIN
-BASE_MODELS = ["RandomForestClassifier"]
-DES_MODELS = ["OLA", "KNORA"]
+BASE_MODELS = ["RandomForestClassifier", "SVC"]
+STATIC_ENS_MODELS = ["VotingClassifier"]
+
+DES_MODELS = ["APosteriori", "APriori", "LCA", "MLA", "OLA",
+              "DESClustering", "DESP", "DESKNN",
+              "KNOP", "KNORAE", "KNORAU", "METADES",
+              "RRC","DESKL", "Exponential", "Logarithmic"]
+
+POOL_MODELS = ["RandomForestClassifier", "SVC"]
 
 # If tqdm is installed, configure loguru with tqdm.write
 # https://github.com/Delgan/loguru/issues/135
