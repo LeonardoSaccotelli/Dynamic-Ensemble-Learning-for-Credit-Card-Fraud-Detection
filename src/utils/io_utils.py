@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Optional, Union
 import pandas as pd
 
 
@@ -96,3 +97,25 @@ def save_csv(
         float_format=float_format,
         **kwargs
     )
+
+
+def save_dataframe_to_excel(df: pd.DataFrame, output_path: Path, sheet_name: str = "Sheet1") -> None:
+    """
+    Save a DataFrame to an Excel file.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        The DataFrame to be saved.
+
+    output_path : Path
+        The file path where the Excel file will be written.
+
+    sheet_name : str, optional
+        The name of the Excel sheet (default is "Sheet1").
+    """
+    try:
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        df.to_excel(output_path, sheet_name=sheet_name, index=False)
+    except Exception as e:
+        raise ValueError(f"Failed to save Excel file to {output_path}: {e}")
