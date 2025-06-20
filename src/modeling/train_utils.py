@@ -82,9 +82,9 @@ def train_and_evaluate_base_model(
         n_iter=n_iter,
         scoring=scoring,
         cv=cvs,
-        verbose=1,
+        verbose=3,
         n_jobs=n_jobs,
-        random_state=random_state,
+        random_state=None,
         refit=True,
         return_train_score=True
     )
