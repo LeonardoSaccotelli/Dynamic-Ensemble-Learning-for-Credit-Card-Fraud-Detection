@@ -121,3 +121,4 @@ imbalanced-learn~=0.13.0
 yellowbrick~=1.5
 scipy~=1.15.3
 scikit-learn~=1.6.1
+DESlib~=0.3.7
