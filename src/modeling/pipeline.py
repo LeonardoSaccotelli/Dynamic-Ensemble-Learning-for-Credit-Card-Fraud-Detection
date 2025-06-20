@@ -8,7 +8,7 @@ from sklearn.linear_model import LogisticRegression
 
 def build_base_model_pipeline(
     estimator: BaseEstimator,
-    numerical_columns_to_scale: list[str],
+    numerical_columns_to_scale: list[int],
     k_best: int = 20,
     remainder: str = "passthrough",
     random_state: int = 42,
@@ -22,8 +22,8 @@ def build_base_model_pipeline(
     estimator : BaseEstimator
         The machine learning model (e.g., RandomForestClassifier).
 
-    numerical_columns_to_scale : list of str
-        List of numerical column names to scale using StandardScaler.
+    numerical_columns_to_scale : list of int
+        List of numerical index of column names to scale using StandardScaler.
 
     k_best : int, optional
         Number of top features to keep with SelectKBest. Default is 20.
@@ -55,7 +55,7 @@ def build_base_model_pipeline(
             LogisticRegression(
                 penalty="l1",
                 solver="saga",
-                max_iter=1000,
+                max_iter=5000, #TODO FIX MAX ITER
                 class_weight="balanced",
                 random_state=random_state,
                 n_jobs=-1,
