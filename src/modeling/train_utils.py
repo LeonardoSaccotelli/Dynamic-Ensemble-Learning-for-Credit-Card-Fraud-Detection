@@ -129,7 +129,7 @@ def train_and_evaluate_ensemble_model(
     ensemble_model : Pipeline or BaseEstimator
         The ensemble model to train (e.g., VotingClassifier, DES model).
 
-    X_train: {array-like, pd.DataFrame}, shape (n_samples, n_features)
+    X_train : {array-like, pd.DataFrame}, shape (n_samples, n_features)
         Training features (can be standard training for static ensemble or DSEL for DES models).
 
     y_train : {array-like, pd.Series}, shape (n_samples,)
