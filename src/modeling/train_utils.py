@@ -1,18 +1,20 @@
-from typing import Union
-
+import pandas as pd
+from typing import Union, Tuple
 from sklearn.base import BaseEstimator
 from sklearn.model_selection import RandomizedSearchCV
 from sklearn.pipeline import Pipeline
-from sklearn.metrics import (accuracy_score, precision_score, recall_score, f1_score, roc_auc_score,
-    average_precision_score, cohen_kappa_score, confusion_matrix)
+from sklearn.metrics import (accuracy_score, precision_score, recall_score, f1_score,
+                             roc_auc_score, average_precision_score, cohen_kappa_score,
+                             confusion_matrix)
+
 
 def train_and_evaluate_base_model(
     base_model: Union[Pipeline, BaseEstimator],
     search_space: dict,
-    X_train,
-    y_train,
-    X_test,
-    y_test,
+    X_train: pd.DataFrame,
+    y_train: pd.Series,
+    X_test: pd.DataFrame,
+    y_test: pd.Series,
     n_iter: int = 50,
     cv: int = 5,
     scoring: str = "f1",
@@ -100,6 +102,51 @@ def train_and_evaluate_base_model(
     test_metrics = compute_classification_metrics(y_test, y_test_pred, y_test_prob)
 
     return best_model, tuning_results, resubstitution_metrics, test_metrics
+
+
+def train_and_evaluate_ensemble_model(
+    ensemble_model,
+    X_train: pd.DataFrame,
+    y_train: pd.Series,
+    X_test: pd.DataFrame,
+    y_test: pd.Series,
+) -> Tuple[BaseEstimator, dict]:
+    """
+    Train and evaluate an ensemble model (static or dynamic) using a fixed training set.
+
+    Parameters
+    ----------
+    ensemble_model :
+        The ensemble model (e.g., VotingClassifier, any DES model).
+
+    X_train : pd.DataFrame
+        Training features (can be standard training for static ensemble or DSEL for DES models).
+
+    y_train : pd.Series
+        Training labels (can be standard training for static ensemble or DSEL for DES models).
+
+    X_test : pd.DataFrame
+        Test features.
+
+    y_test : pd.Series
+        Test labels.
+
+    Returns
+    -------
+    tuple
+        - fitted_model: The ensemble model fitted on training data.
+        - test_metrics: Dictionary with classification metrics on the test set.
+    """
+    # Fit ensemble on its corresponding data (train for static ensemble, or DSEL for dynamic ensemble)
+    ensemble_model.fit(X_train, y_train)
+
+    # Predict and evaluate on a test set
+    y_test_pred = ensemble_model.predict(X_test)
+    y_test_proba = ensemble_model.predict_proba(X_test)[:, 1]
+
+    test_metrics = compute_classification_metrics(y_test, y_test_pred, y_test_proba)
+
+    return ensemble_model, test_metrics
 
 
 def compute_classification_metrics(y_true, y_pred, y_proba):
