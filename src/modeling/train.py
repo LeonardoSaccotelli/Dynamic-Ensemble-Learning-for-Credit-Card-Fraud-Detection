@@ -1,9 +1,8 @@
-from pathlib import Path
-
+import numpy as np
 import pandas as pd
-from loguru import logger
 import typer
-
+from pathlib import Path
+from loguru import logger
 from sklearn.model_selection import RepeatedStratifiedKFold, train_test_split
 
 from src.config import MODELS_DIR, PROCESSED_DATA_DIR
@@ -12,10 +11,13 @@ from src.config import NUMERICAL_FEATURES_TO_NORMALIZE, K_BEST_TO_KEEP
 from src.config import CV_N_SPLITS, CV_N_REPEATS, DSEL_SIZE
 from src.config import N_ITER_TUNING, CV_TUNING, SCORING_TUNING, N_JOBS_TUNING
 from src.config import BASE_MODELS,STATIC_ENS_MODELS, DES_MODELS, POOL_MODELS
-from src.utils.io_utils import load_csv, save_csv
+from src.utils.io_utils import load_csv, save_dataframe_to_excel
 from src.modeling.train_utils import train_and_evaluate_base_model, train_and_evaluate_ensemble_model
-from src.modeling.models import get_base_model_and_search_space, get_static_ensemble_model
+from src.modeling.models import get_base_model_and_search_space, get_static_ensemble_model, get_des_model
 from src.modeling.pipeline import build_base_model_pipeline
+
+import warnings
+warnings.filterwarnings("ignore", category=FutureWarning, module="sklearn.base")
 
 app = typer.Typer()
 
@@ -40,20 +42,32 @@ def main(
     logger.info(f"Shuffling dataset with random_state={RANDOM_STATE}")
     df = df.sample(frac=1.0, random_state=RANDOM_STATE).reset_index(drop=True)
 
-    #TODO PRENDIAMO UN SUBSET PICCOLO PER TESTARE
+    ########################################################################
+    ########################################################################
+    #TODO PRENDIAMO UN SUBSET PICCOLO PER TESTARE DURANTE LO SVILUPPO
+    #TODO DA RIMUOVER DOPO AVER FINITO
     pos = df[df['Class'] == 0].sample(n=1000).reset_index(drop=True)
     neg = df[df['Class'] == 1]
-
     df = pd.concat([pos, neg])
+    ######################################################################
+    #######################################################################
 
     # Split data into features and labels
     logger.info(f"Splitting dataset into features and labels")
     X, y = df.drop(["Class"], axis=1), df["Class"]
     logger.info(f"Shape of X: {X.shape} - Shape of y: {y.shape}")
 
+    # Map column names to their corresponding indices
+    column_to_index = {name: idx for idx, name in enumerate(X.columns)}
+
+    # Convert the list of column names to indices for use in ColumnTransformer
+    numerical_features_indices = [column_to_index[col] for col in NUMERICAL_FEATURES_TO_NORMALIZE]
+
+    # Convert from pandas dataframe to a numpy array to be compatible with deslib
+    X, y = X.to_numpy(), y.to_numpy()
+
     # Fix the evaluation strategy: RepeatedStratifiedKFold(n_splits=10, n_repeats=10)
     cv_outer = RepeatedStratifiedKFold(n_splits=CV_N_SPLITS, n_repeats=CV_N_REPEATS, random_state=RANDOM_STATE)
-    splits = list(cv_outer.split(X, y))
 
     # Starting training models
     logger.info("Starting training models...")
@@ -62,25 +76,27 @@ def main(
     resubstitution_metrics_summary = []
     test_metrics_summary = []
 
-    for run_id, (train_idx, test_idx) in enumerate(splits):
-
-        # TODO CAMBIARE SE DECIDIAMO DI NON USARE 10 X 10
-        iteration_idx, fold_idx = divmod(run_id, CV_N_SPLITS)
+    for run_id, (train_idx, test_idx) in enumerate(cv_outer.split(X, y)):
+        iteration_idx, fold_idx = divmod(run_id, CV_N_SPLITS) # TODO CAMBIARE SE DECIDIAMO DI NON USARE 10 X 10
         logger.info(f"Starting training models for [ITERATION {iteration_idx + 1} - FOLD {fold_idx + 1}]")
 
         # Split the data into training (9 training folds) and test data (1 test fold)
-        X_train, X_test = X.iloc[train_idx], X.iloc[test_idx]
-        y_train, y_test = y.iloc[train_idx], y.iloc[test_idx]
+        X_train, X_test = X[train_idx], X[test_idx]
+        y_train, y_test = y[train_idx], y[test_idx]
 
         # Split the data into training (for base models) and DSEL (for DS techniques) data
-        X_train, X_dsel, y_train, y_dsel = train_test_split(X_train, y_train, test_size=DSEL_SIZE,
-                                                            random_state=RANDOM_STATE, stratify=y_train)
+        X_train, X_dsel, y_train, y_dsel = train_test_split(
+            X_train, y_train,
+            test_size=DSEL_SIZE,
+            random_state=RANDOM_STATE,
+            stratify=y_train
+        )
 
         logger.info(f"X_train_i, X_dsel_i, X_test_i shape: {X_train.shape}, {X_dsel.shape}, {X_test.shape}")
+
         for name, target in zip(["y_train", "y_dsel", "y_test"], [y_train, y_dsel, y_test]):
-            stats = pd.DataFrame(
-                {"count": target.value_counts(), "percentage": target.value_counts(normalize=True) * 100}).round(3)
-            logger.info(f"Stratification class balance for {name}:\n{stats}")
+            unique, frequency = np.unique(target, return_counts=True)
+            logger.info(f"Stratification class balance for {name} [class, frequency]: {unique, frequency}")
 
         # Collect fitted base models
         fitted_base_models = {}
@@ -94,27 +110,25 @@ def main(
 
             # Build the pipeline: Preprocessing + Feature Selection + Classifier
             pipeline_base_model = build_base_model_pipeline(estimator=base_model,
-                                                            numerical_columns_to_scale=NUMERICAL_FEATURES_TO_NORMALIZE,
+                                                            numerical_columns_to_scale=numerical_features_indices,
                                                             k_best=K_BEST_TO_KEEP,
                                                             random_state=RANDOM_STATE)
 
             # Tune the base model, fit on the training folds and evaluate on the test fold
-            (fitted_model,
-             tuning_results,
-             resubstitution_metrics,
-             test_metrics) = train_and_evaluate_base_model(
-                base_model=pipeline_base_model,
-                search_space=search_space,
-                X_train=X_train,
-                y_train=y_train,
-                X_test=X_test,
-                y_test=y_test,
-                n_iter=N_ITER_TUNING,
-                cv=CV_TUNING,
-                scoring=SCORING_TUNING,
-                random_state=RANDOM_STATE,
-                n_jobs=N_JOBS_TUNING,
-            )
+            fitted_model, tuning_results, resubstitution_metrics, test_metrics =\
+                train_and_evaluate_base_model(
+                    base_model=pipeline_base_model,
+                    search_space=search_space,
+                    X_train=X_train,
+                    y_train=y_train,
+                    X_test=X_test,
+                    y_test=y_test,
+                    n_iter=N_ITER_TUNING,
+                    cv=CV_TUNING,
+                    scoring=SCORING_TUNING,
+                    random_state=RANDOM_STATE,
+                    n_jobs=N_JOBS_TUNING,
+                )
 
             # Store the fitted model
             fitted_base_models[base_model_name] = fitted_model
@@ -154,6 +168,8 @@ def main(
             # Get the static ensemble model to train on the pool
             static_ensemble_model = get_static_ensemble_model(model_name=static_ensemble_model_name,
                                                               estimators=pool_classifiers_static_ens)
+
+            # Train the static ensemble models using the pool of classifiers
             fitted_static_ensemble_model, test_metrics = train_and_evaluate_ensemble_model(
                 ensemble_model=static_ensemble_model,
                 X_train=X_train,
@@ -171,7 +187,6 @@ def main(
             }
             test_metrics_summary.append(row_test_metrics)
 
-
         ################################# TRAINING DES MODELS  #################################
         # Prepare pool_classifiers for DESlib (list of fitted estimators)
         pool_classifiers_des = [fitted_base_models[name] for name in POOL_MODELS]
@@ -179,12 +194,33 @@ def main(
         for des_model_name in DES_MODELS:
             logger.info(f"Training DES model: {des_model_name}")
 
+            # Get the DES model to train on the pool
+            des_model = get_des_model(model_name=des_model_name, pool_classifiers=pool_classifiers_des)
 
+            # Train the des models using the pool of classifiers
+            fitted_des_model, test_metrics = train_and_evaluate_ensemble_model(
+                ensemble_model=des_model,
+                X_train=X_dsel,
+                y_train=y_dsel,
+                X_test=X_test,
+                y_test=y_test
+            )
+
+            # Log test metrics with iteration and fold
+            row_test_metrics = {
+                "iteration": iteration_idx + 1,
+                "fold": fold_idx + 1,
+                "model": des_model_name,
+                **test_metrics
+            }
+            test_metrics_summary.append(row_test_metrics)
 
         logger.success(f"Completed [ITERATION {iteration_idx + 1} - FOLD {fold_idx + 1}]")
 
-
-    print(pd.DataFrame(test_metrics_summary))
+    save_dataframe_to_excel(pd.DataFrame(resubstitution_metrics_summary),
+                            results_path / "resubstitution_metrics_summary.xlsx")
+    save_dataframe_to_excel(pd.DataFrame(test_metrics_summary),
+                            results_path / "test_metrics_summary.xlsx")
     logger.success("Modeling training complete.")
 
 
