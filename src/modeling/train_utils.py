@@ -1,6 +1,6 @@
 import numpy as np
 import pandas as pd
-from typing import Union, Tuple
+from typing import Union, Tuple, List
 from sklearn.base import BaseEstimator
 from sklearn.model_selection import StratifiedKFold
 from sklearn.model_selection import RandomizedSearchCV
@@ -201,3 +201,55 @@ def compute_classification_metrics(y_true, y_pred, y_pred_proba):
         "fp": fp,
         "fn": fn
     }
+
+
+def compute_voting_weights_from_dsel(
+    pool: List[Tuple[str, Union[Pipeline, BaseEstimator]]],
+    X_dsel: np.ndarray,
+    y_dsel: np.ndarray,
+    metric: str = "f1",
+    log_scores: bool = False,
+) -> List[float]:
+    """
+    Compute voting weights for pre-fitted classifiers using DSEL performance.
+
+    Parameters
+    ----------
+    pool : list of (str, BaseEstimator or Pipeline)
+        List of (name, fitted classifier) tuples.
+
+    X_dsel : np.ndarray
+        Features from DSEL set.
+
+    y_dsel : np.ndarray
+        Labels from DSEL set.
+
+    metric : str, default="f1"
+        Metric to use for scoring ("f1", "roc_auc", "accuracy", etc.).
+
+    log_scores : bool, default=False
+        If True, print model scores to stdout.
+
+    Returns
+    -------
+    list of float
+        Normalized voting weights based on the selected metric.
+    """
+    weights = []
+
+    for name, model in pool:
+        y_pred = model.predict(X_dsel)
+        y_pred_proba = model.predict_proba(X_dsel)[:, 1]
+        metrics = compute_classification_metrics(y_dsel, y_pred, y_pred_proba)
+        score = metrics.get(metric, 0.0)
+
+        weights.append(score)
+        if log_scores:
+            print(f"[DSEL Score] {name}: {metric} = {score:.4f}")
+
+    total = sum(weights)
+    if total > 0:
+        return [w / total for w in weights]
+    else:
+        # Fallback: equal weights
+        return [1.0 / len(pool)] * len(pool)
