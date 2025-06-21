@@ -78,7 +78,7 @@ def main(
 
     for run_id, (train_idx, test_idx) in enumerate(cv_outer.split(X, y)):
         iteration_idx, fold_idx = divmod(run_id, CV_N_SPLITS) # TODO CAMBIARE SE DECIDIAMO DI NON USARE 10 X 10
-        logger.info(f"Starting training models for [ITERATION {iteration_idx + 1} - FOLD {fold_idx + 1}]")
+        logger.info(f"Starting training models for [ITERATION {iteration_idx + 1} - FOLD {fold_idx + 1} - RUN_ID {run_id}]")
 
         # Split the data into training (9 training folds) and test data (1 test fold)
         X_train, X_test = X[train_idx], X[test_idx]
@@ -226,7 +226,7 @@ def main(
             }
             test_metrics_summary.append(row_test_metrics)
 
-        logger.success(f"Completed [ITERATION {iteration_idx + 1} - FOLD {fold_idx + 1}]")
+        logger.success(f"Completed [ITERATION {iteration_idx + 1} - FOLD {fold_idx + 1}] - RUN_ID {run_id}]")
 
     # Store experimental results
     save_dataframe_to_excel(pd.DataFrame(resubstitution_metrics_summary),
