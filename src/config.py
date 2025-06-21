@@ -43,13 +43,19 @@ SCORING_TUNING = "f1"
 N_JOBS_TUNING = -1
 
 # MODELS TO TRAIN
-BASE_MODELS = ["RandomForestClassifier", "SVC"]
-STATIC_ENS_MODELS = ["VotingClassifier"]
+BASE_MODELS = ["SVC", "KNeighborsClassifier",
+               "DecisionTreeClassifier", "RandomForestClassifier", "ExtraTreesClassifier",
+               "BalancedRandomForestClassifier", "RUSBoostClassifier",
+               "XGBClassifier", "AdaBoostClassifier", "LogitBoostClassifier",
+               "MLPClassifier"]
+
+STATIC_ENS_MODELS = ["VotingClassifier", "VotingClassifier_weighted"]
 
 DES_MODELS = ["APosteriori", "APriori", "LCA", "MLA", "OLA",
               "DESClustering", "DESP", "DESKNN",
               "KNOP", "KNORAE", "KNORAU", "METADES",
-              "RRC","DESKL", "Exponential", "Logarithmic"]
+              "RRC","DESKL", "Exponential", "Logarithmic",
+              "StackedClassifier"]
 
 POOL_MODELS = ["RandomForestClassifier", "SVC"]
 
