@@ -122,3 +122,5 @@ yellowbrick~=1.5
 scipy~=1.15.3
 scikit-learn~=1.6.1
 DESlib~=0.3.7
+xgboost~=3.0.2
+lightgbm~=4.6.0
