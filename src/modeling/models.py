@@ -2,6 +2,7 @@ from typing import List, Tuple, Optional
 from scipy.stats import randint, uniform, loguniform
 
 from sklearn.base import BaseEstimator
+from sklearn.linear_model import LogisticRegression
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.neural_network import MLPClassifier
 from sklearn.svm import SVC
@@ -26,148 +27,281 @@ def get_base_model_and_search_space(model_name: str, random_state: int | None = 
         "SVC": {
             "model_class": SVC,
             "model_args": {
+                "coef0": 0.0,
+                "shrinking": True,
                 "probability": True,
-                "random_state": random_state
+                "tol": 1e-3,
+                "cache_size": 200,
+
+                # Weights associated with classes. The “balanced” mode uses the values of y to automatically
+                # adjust weights inversely proportional to class frequencies in the input data.
+                "class_weight": "balanced",
+                "verbose": False,
+                "max_iter": -1,
+                "random_state": random_state,
             },
             "param_dist": {
-                "classifier__C": uniform(0.1, 10.0),
-                "classifier__gamma": ["scale", "auto"],
-                "classifier__kernel": ["rbf", "poly"]
+                # Regularization parameter. Smaller values specify stronger regularization.
+                "classifier__C": loguniform(1e-3, 1e3),
+                "classifier__gamma": loguniform(1e-4, 1e0), # Kernel coefficient for 'rbf' and 'poly' kernels.
+                "classifier__kernel": ["rbf", "poly", "linear"], # Kernel type
+                # Degree of the polynomial kernel function (only relevant if kernel='poly').
+                "classifier__degree": randint(2, 5),
             }
         },
         "KNeighborsClassifier": {
             "model_class": KNeighborsClassifier,
-            "model_args": {},
+            "model_args": {
+                "n_jobs": -1,
+                "algorithm": "auto",
+                "leaf_size": 30,
+            },
             "param_dist": {
-                "classifier__n_neighbors": randint(3, 20),
+                "classifier__n_neighbors": randint(3, 20), # Number of neighbors to use.
+
+                # Weight function used in prediction.
+                # 'uniform': all neighbors have equal weight.
+                # 'distance': closer neighbors have greater influence.
                 "classifier__weights": ["uniform", "distance"],
+
+                # Power parameter for the Minkowski metric:
+                # p=1 is equivalent to Manhattan distance, p=2 to Euclidean.
                 "classifier__p": [1, 2]
             }
         },
         "DecisionTreeClassifier": {
             "model_class": DecisionTreeClassifier,
             "model_args": {
-                "random_state": random_state,
+                "criterion": "gini", # The function to measure the quality of a split.
+
+                # Weights associated with classes. The “balanced” mode uses the values of y to automatically
+                # adjust weights inversely proportional to class frequencies in the input data.
                 "class_weight": "balanced",
+                "splitter": "best",
+                "random_state": random_state,
             },
             "param_dist": {
-                "classifier__max_depth": randint(3, 20),
-                "classifier__min_samples_split": randint(2, 10),
-                "classifier__min_samples_leaf": randint(1, 10),
+                "classifier__max_depth": randint(3, 20), # Maximum depth of the tree. Controls overfitting.
+                "classifier__min_samples_split": randint(2, 10), # Minimum number of samples required to split an internal node.
+                "classifier__min_samples_leaf": randint(1, 10), # Minimum number of samples required at a leaf node.
+                "classifier__max_features": ["sqrt", "log2"], # Number of features to consider when looking for the best split.
+                "classifier__max_leaf_nodes": randint(2, 20), # Maximum number of terminal nodes. Limits model complexity.
+
+                # A node will be split if this split induces a decrease of the impurity greater than or equal to this value.
+                "classifier__min_impurity_decrease": uniform(0.0, 0.1),
+
+                # Complexity parameter used for Minimal Cost-Complexity Pruning.
+                # Values typically very small (0.0 to ~0.05).
+                "classifier__ccp_alpha": uniform(0.0, 0.01),
             }
         },
         "RandomForestClassifier": {
             "model_class": RandomForestClassifier,
             "model_args": {
-                "random_state": random_state,
+                "criterion": "gini", # The function to measure the quality of a split.
+                "bootstrap": True,  # Bootstrapping (sampling with replacement) enabled.
+                "oob_score": False,
+
                 "n_jobs": -1,
-                "class_weight": "balanced"
+                # Weights associated with classes. The “balanced” mode uses the values of y to automatically
+                # adjust weights inversely proportional to class frequencies in the input data.
+                "class_weight": "balanced",
+                "random_state": random_state,
             },
             "param_dist": {
-                "classifier__n_estimators": randint(50, 300),
-                "classifier__max_depth": randint(5, 30),
-                "classifier__min_samples_split": randint(2, 10),
-                "classifier__min_samples_leaf": randint(1, 10),
-                "classifier__max_features": ["sqrt", "log2", None],
+                "classifier__n_estimators": randint(50, 300), # Number of trees in the forest.
+                "classifier__max_depth": randint(3, 20), # Maximum depth of the tree. Controls overfitting.
+                "classifier__min_samples_split": randint(2, 10), # Minimum number of samples required to split an internal node.
+                "classifier__min_samples_leaf": randint(1, 10), # Minimum number of samples required at a leaf node.
+                "classifier__max_features": ["sqrt", "log2"], # Number of features to consider when looking for the best split.
+                "classifier__max_leaf_nodes": randint(2, 20), # Maximum number of terminal nodes. Limits model complexity.
+                "classifier__max_samples": uniform(0.5, 0.5),
+
+                # A node will be split if this split induces a decrease of the impurity greater than or equal to this value.
+                "classifier__min_impurity_decrease": uniform(0.0, 0.1), # Subsampling of rows per tree (when bootstrap=True).
+
+                # Complexity parameter used for Minimal Cost-Complexity Pruning.
+                # Values typically very small (0.0 to ~0.05).
+                "classifier__ccp_alpha": uniform(0.0, 0.01),
             }
         },
         "ExtraTreesClassifier": {
             "model_class": ExtraTreesClassifier,
             "model_args": {
-                "random_state": random_state,
+                "criterion": "gini", # The function to measure the quality of a split.
+                "bootstrap": False,  # Each tree is trained using the whole learning sample (bootstrap = False)
+                "max_samples": None,
+                "oob_score": False,
+
                 "n_jobs": -1,
-                "class_weight": "balanced"
+                # Weights associated with classes. The “balanced” mode uses the values of y to automatically
+                # adjust weights inversely proportional to class frequencies in the input data.
+                "class_weight": "balanced",
+                "random_state": random_state,
             },
             "param_dist": {
-                "classifier__n_estimators": randint(50, 300),
-                "classifier__max_depth": randint(5, 30),
-                "classifier__min_samples_split": randint(2, 10),
-                "classifier__min_samples_leaf": randint(1, 10),
-                "classifier__max_features": ["sqrt", "log2", None],
+                "classifier__n_estimators": randint(50, 300), # Number of trees in the forest.
+                "classifier__max_depth": randint(3, 20), # Maximum depth of the tree. Controls overfitting.
+                "classifier__min_samples_split": randint(2, 10), # Minimum number of samples required to split an internal node.
+                "classifier__min_samples_leaf": randint(1, 10), # Minimum number of samples required at a leaf node.
+                "classifier__max_features": ["sqrt", "log2"], # Number of features to consider when looking for the best split.
+                "classifier__max_leaf_nodes": randint(2, 20), # Maximum number of terminal nodes. Limits model complexity.
+
+                # A node will be split if this split induces a decrease of the impurity greater than or equal to this value.
+                "classifier__min_impurity_decrease": uniform(0.0, 0.1), # Subsampling of rows per tree (when bootstrap=True).
+
+                # Complexity parameter used for Minimal Cost-Complexity Pruning.
+                # Values typically very small (0.0 to ~0.05).
+                "classifier__ccp_alpha": uniform(0.0, 0.01),
             }
         },
         "BalancedRandomForestClassifier": {
             "model_class": BalancedRandomForestClassifier,
             "model_args": {
-                "random_state": random_state,
+                "criterion": "gini",  # The function to measure the quality of a split.
+                "bootstrap": False,  # Each tree is trained using the whole learning sample (bootstrap = False)
+                "max_samples": None,
+                "oob_score": False,
+                "sampling_strategy": "all", # Sampling information to sample the data set: "all"=resample all classes
+                "replacement": True, # Whether to sample randomly with replacement or not.
                 "n_jobs": -1,
-            },
-            "param_dist": {
-                "classifier__n_estimators": randint(50, 300),
-                "classifier__max_depth": randint(5, 30),
-                "classifier__min_samples_split": randint(2, 10),
-                "classifier__min_samples_leaf": randint(1, 10),
-                "classifier__max_features": ["sqrt", "log2", None],
-            }
-        },
-        "RUSBoostClassifier": {
-            "model_class": RUSBoostClassifier,
-            "model_args": {
+                # Weights associated with classes. The “balanced” mode uses the values of y to automatically
+                # adjust weights inversely proportional to class frequencies in the input data.
+                "class_weight": "balanced",
                 "random_state": random_state,
             },
             "param_dist": {
-                "classifier__n_estimators": randint(50, 200),
-                "classifier__learning_rate": uniform(0.01, 1.0)
+                "classifier__n_estimators": randint(50, 300), # Number of trees in the forest.
+                "classifier__max_depth": randint(3, 20), # Maximum depth of the tree. Controls overfitting.
+                "classifier__min_samples_split": randint(2, 10), # Minimum number of samples required to split an internal node.
+                "classifier__min_samples_leaf": randint(1, 10), # Minimum number of samples required at a leaf node.
+                "classifier__max_features": ["sqrt", "log2"], # Number of features to consider when looking for the best split.
+                "classifier__max_leaf_nodes": randint(2, 20), # Maximum number of terminal nodes. Limits model complexity.
+
+                # A node will be split if this split induces a decrease of the impurity greater than or equal to this value.
+                "classifier__min_impurity_decrease": uniform(0.0, 0.1), # Subsampling of rows per tree (when bootstrap=True).
+
+                # Complexity parameter used for Minimal Cost-Complexity Pruning.
+                # Values typically very small (0.0 to ~0.05).
+                "classifier__ccp_alpha": uniform(0.0, 0.01),
             }
         },
         "AdaBoostClassifier": {
             "model_class": AdaBoostClassifier,
             "model_args": {
+                "estimator": DecisionTreeClassifier(max_depth=1),
                 "random_state": random_state
             },
             "param_dist": {
-                "classifier__n_estimators": randint(50, 200),
-                "classifier__learning_rate": uniform(0.01, 1.0)
+                "classifier__n_estimators": randint(50, 200),  # Number of weak learners
+
+                # Weight applied to each classifier at each boosting iteration.
+                # A higher learning rate increases the contribution of each classifier.
+                "classifier__learning_rate": loguniform(1e-3, 1.0)
             }
         },
         "LogitBoostClassifier": {
             "model_class": GradientBoostingClassifier,
             "model_args": {
+                "loss": "log_loss", # ‘log_loss’ refers to binomial and multinomial deviance, the same as used in logistic regression.
+                "criterion": "friedman_mse",
+                "subsample": 1.0,
+                "validation_fraction": 0.1,
+                "n_iter_no_change": 10,
                 "random_state": random_state,
-                "loss": "log_loss"
             },
             "param_dist": {
-                "classifier__n_estimators": randint(50, 200),
-                "classifier__learning_rate": uniform(0.01, 1.0),
-                "classifier__max_depth": randint(3, 10)
+                "classifier__n_estimators": randint(50, 300), # Number of boosting stages to perform.
+                "classifier__max_depth": randint(3, 20),  # Maximum depth of the tree. Controls overfitting.
+                "classifier__min_samples_split": randint(2, 10), # Minimum number of samples required to split an internal node.
+                "classifier__min_samples_leaf": randint(1, 10),  # Minimum number of samples required at a leaf node.
+                "classifier__max_features": ["sqrt", "log2"], # Number of features to consider when looking for the best split.
+                "classifier__max_leaf_nodes": randint(2, 20), # Maximum number of terminal nodes. Limits model complexity.
+
+                # A node will be split if this split induces a decrease of the impurity greater than or equal to this value.
+                "classifier__min_impurity_decrease": uniform(0.0, 0.1), # Subsampling of rows per tree (when bootstrap=True).
+
+                # Complexity parameter used for Minimal Cost-Complexity Pruning.
+                # Values typically very small (0.0 to ~0.05).
+                "classifier__ccp_alpha": uniform(0.0, 0.01),
+
+                # Weight applied to each classifier at each boosting iteration.
+                # A higher learning rate increases the contribution of each classifier.
+                "classifier__learning_rate": loguniform(1e-3, 1.0)
             }
         },
         "XGBClassifier": {
             "model_class": XGBClassifier,
             "model_args": {
-                "random_state": random_state,
-                "eval_metric": "logloss"
-            },
-            "param_dist": {
-                "classifier__n_estimators": randint(50, 200),
-                "classifier__max_depth": randint(3, 10),
-                "classifier__learning_rate": uniform(0.01, 0.3),
-                "classifier__subsample": uniform(0.5, 0.5),
-                "classifier__colsample_bytree": uniform(0.5, 0.5),
-            }
-        },
-        "LGBMClassifier": {
-            "model_class": LGBMClassifier,
-            "model_args": {
+                "objective": "binary:logistic",  # Binary classification with logistic loss.
+                "eval_metric": "logloss",  # Consistent with binary:logistic.
+                "n_jobs": -1,  # Parallel training.
                 "random_state": random_state
             },
             "param_dist": {
-                "classifier__n_estimators": randint(50, 200),
-                "classifier__max_depth": randint(3, 10),
-                "classifier__learning_rate": uniform(0.01, 0.3),
-                "classifier__num_leaves": randint(20, 150)
+                "classifier__n_estimators": randint(50, 300),  # Number of boosting rounds (trees).
+                "classifier__max_depth": randint(3, 10),  # Maximum tree depth — lower = less overfitting.
+                "classifier__learning_rate": loguniform(0.01, 0.3),  # Shrinks contribution of each tree.
+                "classifier__subsample": uniform(0.6, 0.4),  # Fraction of samples per tree. Helps generalization.
+                "classifier__colsample_bytree": uniform(0.6, 0.4),
+                # Fraction of features per tree. Avoids co-adaptation.
+                "classifier__gamma": uniform(0.0, 5.0),  # Minimum loss reduction for a split. Acts as regularization.
+                "classifier__reg_alpha": loguniform(1e-4, 10.0),  # L1 regularization on weights.
+                "classifier__reg_lambda": loguniform(1e-4, 10.0),  # L2 regularization on weights.
+                "classifier__scale_pos_weight": uniform(1.0, 10.0),  # Used to balance positive and negative weights.
+                "classifier__min_child_weight": randint(1, 10),  # Minimum sum of instance weight (hessian) in child.
+                "classifier__max_delta_step": randint(0, 10)  # Helps with logistic regression in imbalanced data.
+            }
+        }
+        ,
+        "LGBMClassifier": {
+            "model_args": {
+                "random_state": random_state,
+                "n_jobs": -1,
+                "class_weight": "balanced"  # Handles imbalance by adjusting weights
+            },
+            "param_dist": {
+                "classifier__n_estimators": randint(50, 300),  # Number of boosting rounds
+                "classifier__learning_rate": loguniform(1e-3, 1e-1),  # Controls contribution of each tree
+                "classifier__max_depth": randint(3, 20),  # Limits the depth of each tree
+                "classifier__num_leaves": randint(20, 150),  # Number of leaves per tree
+                "classifier__min_child_samples": randint(10, 100),  # Minimum data in one leaf
+                "classifier__subsample": uniform(0.6, 0.4),  # Fraction of data used per tree
+                "classifier__colsample_bytree": uniform(0.6, 0.4),  # Fraction of features per tree
+                "classifier__reg_alpha": loguniform(1e-5, 1e-1),  # L1 regularization
+                "classifier__reg_lambda": loguniform(1e-5, 1e-1),  # L2 regularization
+            }
+        },
+        "RUSBoostClassifier": {
+            "model_class": RUSBoostClassifier,
+            "model_args": {
+                "sampling_strategy": "auto",  # Sampling information to sample the data set: "auto"='not minority'.
+                "replacement": False,  # Whether to sample randomly with replacement or not.
+                "random_state": random_state,
+            },
+            "param_dist": {
+                "classifier__n_estimators": randint(50, 200),  # Number of weak learners
+
+                # Weight applied to each classifier at each boosting iteration.
+                # A higher learning rate increases the contribution of each classifier.
+                "classifier__learning_rate": loguniform(1e-3, 1.0)
             }
         },
         "MLPClassifier": {
             "model_class": MLPClassifier,
             "model_args": {
                 "random_state": random_state,
-                "max_iter": 300
+                "max_iter": 1000,
+                "early_stopping": True,
+                "validation_fraction": 0.1,
+                "n_iter_no_change": 10,
+                "activation": "relu",
+                "solver": "adam",
             },
             "param_dist": {
                 "classifier__hidden_layer_sizes": [(50,), (100,), (100, 50)],
-                "classifier__alpha": uniform(1e-5, 1e-2),
-                "classifier__learning_rate_init": uniform(1e-4, 1e-2)
+                "classifier__alpha": loguniform(1e-5, 1e-2),  # Regularization strength
+                "classifier__learning_rate_init": loguniform(1e-4, 1e-2)  # Initial learning rate
             }
         }
     }
@@ -328,7 +462,14 @@ def get_des_model(
         },
         "StackedClassifier": {
             "model_class": StackedClassifier,
-            "model_args": {}
+            "model_args": {
+                "meta_classifier": LogisticRegression(
+                                        solver='saga',
+                                        random_state=0,
+                                        class_weight='balanced',
+                                        max_iter=5000)
+
+            }
         }
     }
 
