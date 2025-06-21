@@ -12,7 +12,7 @@ from src.config import CV_N_SPLITS, CV_N_REPEATS, DSEL_SIZE
 from src.config import N_ITER_TUNING, CV_TUNING, SCORING_TUNING, N_JOBS_TUNING
 from src.config import BASE_MODELS,STATIC_ENS_MODELS, DES_MODELS, POOL_MODELS
 from src.utils.io_utils import load_csv, save_dataframe_to_excel
-from src.modeling.train_utils import train_and_evaluate_base_model, train_and_evaluate_ensemble_model
+from src.modeling.train_utils import train_and_evaluate_base_model, train_and_evaluate_ensemble_model, compute_voting_weights_from_dsel
 from src.modeling.models import get_base_model_and_search_space, get_static_ensemble_model, get_des_model
 from src.modeling.pipeline import build_base_model_pipeline
 
@@ -93,7 +93,6 @@ def main(
         )
 
         logger.info(f"X_train_i, X_dsel_i, X_test_i shape: {X_train.shape}, {X_dsel.shape}, {X_test.shape}")
-
         for name, target in zip(["y_train", "y_dsel", "y_test"], [y_train, y_dsel, y_test]):
             unique, frequency = np.unique(target, return_counts=True)
             logger.info(f"Stratification class balance for {name} [class, frequency]: {unique, frequency}")
@@ -165,9 +164,21 @@ def main(
         for static_ensemble_model_name in STATIC_ENS_MODELS:
             logger.info(f"Training static ensemble model: {static_ensemble_model_name}")
 
+            # Compute weights on dsel dataset for VotingClassifier_weighted
+            weights = None
+            if static_ensemble_model_name == "VotingClassifier_weighted":
+                logger.info("Computing weights for VotingClassifier_weighted...")
+                weights = compute_voting_weights_from_dsel(
+                    pool=pool_classifiers_static_ens,
+                    X_dsel=X_dsel,
+                    y_dsel=y_dsel,
+                    metric="f1"
+                )
+
             # Get the static ensemble model to train on the pool
             static_ensemble_model = get_static_ensemble_model(model_name=static_ensemble_model_name,
-                                                              estimators=pool_classifiers_static_ens)
+                                                              estimators=pool_classifiers_static_ens,
+                                                              weights=weights)
 
             # Train the static ensemble models using the pool of classifiers
             fitted_static_ensemble_model, test_metrics = train_and_evaluate_ensemble_model(
@@ -217,10 +228,12 @@ def main(
 
         logger.success(f"Completed [ITERATION {iteration_idx + 1} - FOLD {fold_idx + 1}]")
 
+    # Store experimental results
     save_dataframe_to_excel(pd.DataFrame(resubstitution_metrics_summary),
                             results_path / "resubstitution_metrics_summary.xlsx")
     save_dataframe_to_excel(pd.DataFrame(test_metrics_summary),
                             results_path / "test_metrics_summary.xlsx")
+
     logger.success("Modeling training complete.")
 
 
