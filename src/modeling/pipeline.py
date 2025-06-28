@@ -55,7 +55,7 @@ def build_base_model_pipeline(
             LogisticRegression(
                 penalty="l1",
                 solver="saga",
-                max_iter=5000, #TODO FIX MAX ITER
+                max_iter=25000,
                 class_weight="balanced",
                 random_state=random_state,
                 n_jobs=-1,
@@ -71,3 +71,40 @@ def build_base_model_pipeline(
     ])
 
     return pipeline
+
+
+def get_final_selected_features(pipeline: Pipeline, feature_names: list[str]) -> tuple[list[int], list[str]]:
+    """
+    Extract final selected feature indices and names from a pipeline
+    with nested SelectKBest + SelectFromModel.
+
+    Parameters
+    ----------
+    pipeline : Pipeline
+        A fitted sklearn pipeline with steps including feature_selection.
+
+    feature_names : list of str
+        List of original column names (before ColumnTransformer).
+
+    Returns
+    -------
+    tuple[list[int], list[str]]
+        - Indices of selected features
+        - Names of selected features
+    """
+    feature_selection_pipeline = pipeline.named_steps["feature_selection"]
+    kbest = feature_selection_pipeline.named_steps["select_kbest"]
+    sfm = feature_selection_pipeline.named_steps["select_from_model"]
+
+    # Get indices from k-best
+    mask_kbest = kbest.get_support()
+    kbest_indices = [i for i, keep in enumerate(mask_kbest) if keep]
+
+    # Get indices from SelectFromModel (applied on k-best)
+    mask_sfm = sfm.get_support()
+    final_indices = [kbest_indices[i] for i, keep in enumerate(mask_sfm) if keep]
+
+    # Get final feature names
+    final_names = [feature_names[i] for i in final_indices]
+
+    return final_indices, final_names
