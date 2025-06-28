@@ -241,7 +241,7 @@ def get_base_model_and_search_space(model_name: str, random_state: int | None = 
             "param_dist": {
                 "classifier__n_estimators": randint(50, 300),  # Number of boosting rounds (trees).
                 "classifier__max_depth": randint(3, 10),  # Maximum tree depth — lower = less overfitting.
-                "classifier__learning_rate": loguniform(0.01, 0.3),  # Shrinks contribution of each tree.
+                "classifier__learning_rate": loguniform(0.01, 0.3),  # Shrinks the contribution of each tree.
                 "classifier__subsample": uniform(0.6, 0.4),  # Fraction of samples per tree. Helps generalization.
                 "classifier__colsample_bytree": uniform(0.6, 0.4),
                 # Fraction of features per tree. Avoids co-adaptation.
@@ -252,13 +252,12 @@ def get_base_model_and_search_space(model_name: str, random_state: int | None = 
                 "classifier__min_child_weight": randint(1, 10),  # Minimum sum of instance weight (hessian) in child.
                 "classifier__max_delta_step": randint(0, 10)  # Helps with logistic regression in imbalanced data.
             }
-        }
-        ,
+        },
         "LGBMClassifier": {
             "model_args": {
                 "random_state": random_state,
                 "n_jobs": -1,
-                "class_weight": "balanced"  # Handles imbalance by adjusting weights
+                "is_unbalance": True  # Handles imbalance by adjusting weights
             },
             "param_dist": {
                 "classifier__n_estimators": randint(50, 300),  # Number of boosting rounds
@@ -291,7 +290,7 @@ def get_base_model_and_search_space(model_name: str, random_state: int | None = 
             "model_class": MLPClassifier,
             "model_args": {
                 "random_state": random_state,
-                "max_iter": 1000,
+                "max_iter": 10000,
                 "early_stopping": True,
                 "validation_fraction": 0.1,
                 "n_iter_no_change": 10,
@@ -467,7 +466,7 @@ def get_des_model(
                                         solver='saga',
                                         random_state=0,
                                         class_weight='balanced',
-                                        max_iter=5000)
+                                        max_iter=10000)
 
             }
         }
