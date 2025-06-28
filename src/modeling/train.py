@@ -10,11 +10,11 @@ from src.config import RUN_ID, RANDOM_STATE
 from src.config import NUMERICAL_FEATURES_TO_NORMALIZE, K_BEST_TO_KEEP
 from src.config import CV_N_SPLITS, CV_N_REPEATS, DSEL_SIZE
 from src.config import N_ITER_TUNING, CV_TUNING, SCORING_TUNING, N_JOBS_TUNING
-from src.config import BASE_MODELS,STATIC_ENS_MODELS, DES_MODELS, POOL_MODELS
+from src.config import BASE_MODELS, STATIC_ENS_MODELS, DES_MODELS, POOL_MODELS
 from src.utils.io_utils import load_csv, save_dataframe_to_excel
 from src.modeling.train_utils import train_and_evaluate_base_model, train_and_evaluate_ensemble_model, compute_voting_weights_from_dsel
 from src.modeling.models import get_base_model_and_search_space, get_static_ensemble_model, get_des_model
-from src.modeling.pipeline import build_base_model_pipeline
+from src.modeling.pipeline import build_base_model_pipeline, get_final_selected_features
 
 import warnings
 warnings.filterwarnings("ignore", category=FutureWarning, module="sklearn.base")
@@ -58,6 +58,7 @@ def main(
     logger.info(f"Shape of X: {X.shape} - Shape of y: {y.shape}")
 
     # Map column names to their corresponding indices
+    feature_names = X.columns.to_list()
     column_to_index = {name: idx for idx, name in enumerate(X.columns)}
 
     # Convert the list of column names to indices for use in ColumnTransformer
@@ -132,11 +133,16 @@ def main(
             # Store the fitted model
             fitted_base_models[base_model_name] = fitted_model
 
+            # Extract selected feature indices and names
+            selected_indices, selected_names = get_final_selected_features(fitted_model, feature_names)
+
             # Log resubstitution metrics with iteration and fold
             row_resubstitution_metrics = {
                 "iteration": iteration_idx + 1,
                 "fold": fold_idx + 1,
                 "model": base_model_name,
+                "selected_features_indices": selected_indices,
+                "selected_features_names": selected_names,
                 **resubstitution_metrics,
                 **tuning_results,
             }
