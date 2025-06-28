@@ -1,3 +1,4 @@
+import time
 import numpy as np
 import pandas as pd
 from typing import Union, Tuple, List
@@ -89,7 +90,9 @@ def train_and_evaluate_base_model(
         return_train_score=True
     )
 
+    start_tuning_time = time.time()
     search.fit(X_train, y_train)
+    end_tuning_time = time.time()
     best_model = search.best_estimator_
 
     # Retrieve best search info
@@ -98,7 +101,8 @@ def train_and_evaluate_base_model(
         "cv_tuning_std_train_score": search.cv_results_["std_train_score"][search.best_index_],
         "cv_tuning_mean_val_score": search.cv_results_["mean_test_score"][search.best_index_],
         "cv_tuning_std_val_score": search.cv_results_["std_test_score"][search.best_index_],
-        "best_params": search.best_params_
+        "best_params": search.best_params_,
+        "tuning_time": end_tuning_time - start_tuning_time,
     }
 
     # Evaluate on the training set
@@ -107,9 +111,13 @@ def train_and_evaluate_base_model(
     resubstitution_metrics = compute_classification_metrics(y_train, y_train_pred, y_train_pred_prob)
 
     # Evaluate on the test set
+    start_score_time = time.time()
     y_test_pred = best_model.predict(X_test)
+    end_score_time = time.time()
+
     y_test_pred_prob = best_model.predict_proba(X_test)[:, 1]
     test_metrics = compute_classification_metrics(y_test, y_test_pred, y_test_pred_prob)
+    test_metrics["score_time"] = end_score_time - start_score_time
 
     return best_model, tuning_results, resubstitution_metrics, test_metrics
 
@@ -153,10 +161,13 @@ def train_and_evaluate_ensemble_model(
     ensemble_model.fit(X_train, y_train)
 
     # Predict and evaluate on a test set
+    start_score_time = time.time()
     y_test_pred = ensemble_model.predict(X_test)
+    end_score_time = time.time()
     y_test_pred_proba = ensemble_model.predict_proba(X_test)[:, 1]
 
     test_metrics = compute_classification_metrics(y_test, y_test_pred, y_test_pred_proba)
+    test_metrics["score_time"] = end_score_time - start_score_time
 
     return ensemble_model, test_metrics
 
