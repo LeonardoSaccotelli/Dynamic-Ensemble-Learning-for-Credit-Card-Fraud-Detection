@@ -193,8 +193,10 @@ def compute_classification_metrics(y_true, y_pred, y_pred_proba):
         Dictionary with classification metrics.
     """
     tn, fp, fn, tp = confusion_matrix(y_true, y_pred).ravel()
+    tnr = tn / (tn + fp) if (tn + fp) > 0 else 0.0
+    tpr = tp / (tp + fn) if (tp + fn) > 0 else 0.0
+    fpr = fp / (fp + tnr) if (fp + tnr) > 0 else 0.0
 
-    specificity = tn / (tn + fp) if (tn + fp) > 0 else 0.0
     recall = recall_score(y_true, y_pred, zero_division=0)
 
     return {
@@ -205,12 +207,14 @@ def compute_classification_metrics(y_true, y_pred, y_pred_proba):
         "roc_auc": roc_auc_score(y_true, y_pred_proba),
         "average_precision": average_precision_score(y_true, y_pred_proba),
         "kappa": cohen_kappa_score(y_true, y_pred),
-        "specificity": specificity,
-        "balanced_accuracy": (recall + specificity) / 2,
+        "balanced_accuracy": (recall + tnr) / 2,
         "tp": tp,
         "tn": tn,
         "fp": fp,
-        "fn": fn
+        "fn": fn,
+        "tnr": tnr,
+        "fpr": fpr,
+        "tpr": tpr
     }
 
 
