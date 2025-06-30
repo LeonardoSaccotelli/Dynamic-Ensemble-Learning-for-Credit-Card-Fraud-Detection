@@ -72,6 +72,11 @@ cleaning:
 features:
 	$(PYTHON_INTERPRETER) src/features.py
 
+## Run the training pipeline (use 'make train' to train the models)
+.PHONY: train
+train:
+	$(PYTHON_INTERPRETER) src/modeling/train.py
+
 #################################################################################
 # Self Documenting Commands                                                     #
 #################################################################################
