@@ -11,9 +11,11 @@ from src.config import NUMERICAL_FEATURES_TO_NORMALIZE, K_BEST_TO_KEEP
 from src.config import CV_N_SPLITS, CV_N_REPEATS, DSEL_SIZE
 from src.config import N_ITER_TUNING, CV_TUNING, SCORING_TUNING, N_JOBS_TUNING
 from src.config import BASE_MODELS, STATIC_ENS_MODELS, DES_MODELS, POOL_MODELS
+from src.config import RESAMPLING_METHOD
 from src.utils.io_utils import load_csv, save_dataframe_to_excel
 from src.modeling.train_utils import train_and_evaluate_base_model, train_and_evaluate_ensemble_model, compute_voting_weights_from_dsel
-from src.modeling.models import get_base_model_and_search_space, get_static_ensemble_model, get_des_model
+from src.modeling.models import (get_base_model_and_search_space, get_static_ensemble_model,
+                                 get_des_model, get_resampling_pipeline)
 from src.modeling.pipeline import build_base_model_pipeline, get_final_selected_features
 
 import warnings
@@ -42,16 +44,6 @@ def main(
     logger.info(f"Shuffling dataset with random_state={RANDOM_STATE}")
     df = df.sample(frac=1.0, random_state=RANDOM_STATE).reset_index(drop=True)
 
-    ########################################################################
-    ########################################################################
-    #TODO PRENDIAMO UN SUBSET PICCOLO PER TESTARE DURANTE LO SVILUPPO
-    #TODO DA RIMUOVER DOPO AVER FINITO
-    pos = df[df['Class'] == 0].sample(n=1000).reset_index(drop=True)
-    neg = df[df['Class'] == 1]
-    df = pd.concat([pos, neg])
-    ######################################################################
-    #######################################################################
-
     # Split data into features and labels
     logger.info(f"Splitting dataset into features and labels")
     X, y = df.drop(["Class"], axis=1), df["Class"]
@@ -78,7 +70,7 @@ def main(
     test_metrics_summary = []
 
     for run_id, (train_idx, test_idx) in enumerate(cv_outer.split(X, y)):
-        iteration_idx, fold_idx = divmod(run_id, CV_N_SPLITS) # TODO CAMBIARE SE DECIDIAMO DI NON USARE 10 X 10
+        iteration_idx, fold_idx = divmod(run_id, CV_N_SPLITS)
         logger.info(f"Starting training models for [ITERATION {iteration_idx + 1} - FOLD {fold_idx + 1} - RUN_ID {run_id}]")
 
         # Split the data into training (9 training folds) and test data (1 test fold)
@@ -97,6 +89,12 @@ def main(
         for name, target in zip(["y_train", "y_dsel", "y_test"], [y_train, y_dsel, y_test]):
             unique, frequency = np.unique(target, return_counts=True)
             logger.info(f"Stratification class balance for {name} [class, frequency]: {unique, frequency}")
+
+        # Fit and resample only the training data
+        if RESAMPLING_METHOD is not None:
+            resampler_pipeline = get_resampling_pipeline(RESAMPLING_METHOD, RANDOM_STATE)
+            X_train, y_train = resampler_pipeline.fit_resample(X_train, y_train)
+            logger.info(f"Post-resampling shape: {X_train.shape}, {np.unique(y_train, return_counts=True)}")
 
         # Collect fitted base models
         fitted_base_models = {}
