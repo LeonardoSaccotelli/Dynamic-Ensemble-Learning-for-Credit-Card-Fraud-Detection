@@ -11,7 +11,10 @@ from sklearn.ensemble import RandomForestClassifier, AdaBoostClassifier, ExtraTr
 from sklearn.ensemble import VotingClassifier
 from imblearn.ensemble import BalancedRandomForestClassifier, RUSBoostClassifier
 from xgboost import XGBClassifier
-from lightgbm import LGBMClassifier
+
+from imblearn.pipeline import Pipeline as ImbPipeline
+from imblearn.under_sampling import RandomUnderSampler
+from imblearn.combine import SMOTEENN
 
 from deslib.dcs import APriori, APosteriori, LCA, MLA, OLA
 from deslib.des import KNORAE, KNORAU, KNOP, DESP, DESKNN, DESClustering, METADES
@@ -481,3 +484,45 @@ def get_des_model(
     model_args = des_config["model_args"]
 
     return model_class(pool_classifiers=pool_classifiers, **model_args)
+
+
+def get_resampling_pipeline(
+    resampler_name: str | None,
+    random_state: int = 42
+) -> ImbPipeline:
+    """
+    Return a resampling pipeline using one of the five selected strategies.
+
+    Parameters
+    ----------
+    resampler_name : str | None
+        One of the predefined resampling strategies:
+        ['Under_0.005','Under_0.005_SMOTEENN']
+
+    random_state : int, optional
+        Random seed for reproducibility (default is 42).
+
+    Returns
+    -------
+    ImbPipeline
+        A resampling pipeline ready to be inserted before the model in a full pipeline.
+
+    Raises
+    ------
+    ValueError
+        If the strategy name is not one of the predefined options.
+    """
+    strategy_dict = {
+        "Under_0.005": ImbPipeline([
+            ("undersample", RandomUnderSampler(sampling_strategy=0.005, random_state=random_state))
+        ]),
+        "Under_0.005_SMOTEENN": ImbPipeline([
+            ("undersample", RandomUnderSampler(sampling_strategy=0.005, random_state=random_state)),
+            ("resample", SMOTEENN(random_state=random_state))
+        ])
+    }
+
+    if resampler_name not in strategy_dict:
+        raise ValueError(f"Unknown resampler '{resampler_name}'. Available: {list(strategy_dict.keys())}")
+
+    return strategy_dict[resampler_name]
