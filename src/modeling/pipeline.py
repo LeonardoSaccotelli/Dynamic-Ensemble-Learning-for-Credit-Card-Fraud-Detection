@@ -53,6 +53,8 @@ def build_base_model_pipeline(
         ("select_kbest", SelectKBest(score_func=f_classif, k=k_best)),
         ("select_from_model", SelectFromModel(
             LogisticRegression(
+                tol=1e-2,
+                C=0.1,
                 penalty="l1",
                 solver="saga",
                 max_iter=25000,
