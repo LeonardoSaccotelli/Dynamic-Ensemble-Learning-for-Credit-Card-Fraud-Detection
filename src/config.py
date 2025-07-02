@@ -32,13 +32,13 @@ NUMERICAL_FEATURES_TO_NORMALIZE = ["Log_Amount"]
 K_BEST_TO_KEEP = 20
 
 # EXPERIMENT AND EVALUATION SETTINGS
-CV_N_SPLITS = 2
-CV_N_REPEATS = 2
+CV_N_SPLITS = 10
+CV_N_REPEATS = 10
 DSEL_SIZE = 0.2
 
 # HYPERPARAMETER TUNING SETTINGS FOR RANDOMIZED_SEARCH_CV
-N_ITER_TUNING = 2
-CV_TUNING = 2
+N_ITER_TUNING = 50
+CV_TUNING = 5
 SCORING_TUNING = "f1"
 N_JOBS_TUNING = -1
 
@@ -57,7 +57,10 @@ DES_MODELS = ["APosteriori", "APriori", "LCA", "MLA", "OLA",
               "RRC","DESKL", "Exponential", "Logarithmic",
               "StackedClassifier"]
 
-POOL_MODELS = ["RandomForestClassifier", "SVC"]
+POOL_MODELS = ["RandomForestClassifier", "SVC", "BalancedRandomForestClassifier",
+               "RUSBoostClassifier", "XGBClassifier", "AdaBoostClassifier",]
+
+RESAMPLING_METHOD = "Under_0.005_SMOTEENN"
 
 # If tqdm is installed, configure loguru with tqdm.write
 # https://github.com/Delgan/loguru/issues/135
