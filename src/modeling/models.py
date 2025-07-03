@@ -400,71 +400,219 @@ def get_des_model(
     des_model_configurations = {
         "APriori": {
             "model_class": APriori,
-            "model_args": {}
+            "model_args": {
+                "k": 8,
+                "DFP": True,
+                "IH_rate": 0.3,
+                "selection_method": "best",
+                "knn_classifier": "knn",
+                "knn_metric": "minkowski",
+                "knne": True,
+                "n_jobs": -1
+            }
         },
         "APosteriori": {
             "model_class": APosteriori,
-            "model_args": {}
+            "model_args": {
+                "k": 8,
+                "DFP": True,
+                "IH_rate": 0.3,
+                "selection_method": "best",
+                "knn_classifier": "knn",
+                "knn_metric": "minkowski",
+                "knne": True,
+                "n_jobs": -1
+            }
         },
         "LCA": {
             "model_class": LCA,
-            "model_args": {}
+            "model_args": {
+                "k": 8,
+                "DFP": True,
+                "IH_rate": 0.3,
+                "selection_method": "best",
+                "knn_classifier": "knn",
+                "knn_metric": "minkowski",
+                "knne": True,
+                "n_jobs": -1
+            }
         },
         "MLA": {
             "model_class": MLA,
-            "model_args": {}
+            "model_args": {
+                "k": 8,
+                "DFP": True,
+                "IH_rate": 0.3,
+                "selection_method": "best",
+                "knn_classifier": "knn",
+                "knn_metric": "minkowski",
+                "knne": True,
+                "n_jobs": -1}
         },
         "OLA": {
             "model_class": OLA,
-            "model_args": {}
+            "model_args": {
+                "k": 8,
+                "DFP": True,
+                "IH_rate": 0.3,
+                "selection_method": "best",
+                "knn_classifier": "knn",
+                "knn_metric": "minkowski",
+                "knne": True,
+                "n_jobs": -1
+            }
         },
         "KNORAE": {
             "model_class": KNORAE,
-            "model_args": {}
+            "model_args": {
+                "k": 8,
+                "DFP": True,
+                "IH_rate": 0.3,
+                "selection_method": "best",
+                "knn_classifier": "knn",
+                "knn_metric": "minkowski",
+                "knne": True,
+                "n_jobs": -1,
+                "voting": "soft",
+            }
         },
         "KNORAU": {
             "model_class": KNORAU,
-            "model_args": {}
-        },
-        "METADES": {
-            "model_class": METADES,
-            "model_args": {}
+            "model_args": {
+                "k": 8,
+                "DFP": True,
+                "IH_rate": 0.3,
+                "selection_method": "best",
+                "knn_classifier": "knn",
+                "knn_metric": "minkowski",
+                "knne": True,
+                "n_jobs": -1,
+                "voting": "soft",
+            }
         },
         "DESP": {
             "model_class": DESP,
-            "model_args": {}
+            "model_args": {
+                "k": 8,
+                "DFP": True,
+                "IH_rate": 0.3,
+                "knn_classifier": "knn",
+                "knn_metric": "minkowski",
+                "knne": True,
+                "n_jobs": -1,
+                "voting": "soft",
+            }
         },
         "DESKNN": {
             "model_class": DESKNN,
-            "model_args": {}
+            "model_args": {
+                "k": 8,
+                "DFP": True,
+                "IH_rate": 0.3,
+                "pct_accuracy": 0.5,
+                "pct_diversity": 0.3,
+                "more_diverse": True,
+                "knn_classifier": "knn",
+                "knn_metric": "minkowski",
+                "knne": True,
+                "n_jobs": -1,
+                "voting": "soft",
+            }
         },
         "DESClustering": {
             "model_class": DESClustering,
-            "model_args": {}
+            "model_args": {
+                "pct_accuracy": 0.5,
+                "pct_diversity": 0.3,
+                "more_diverse": True,
+                "metric_performance": "accuracy_score",
+                "n_clusters": 5,
+                "n_jobs": -1,
+                "voting": "soft",
+            }
         },
         "KNOP": {
             "model_class": KNOP,
-            "model_args": {}
+            "model_args": {
+                "k": 8,
+                "DFP": True,
+                "IH_rate": 0.3,
+                "knn_classifier": "knn",
+                "knne": True,
+                "n_jobs": -1,
+                "voting": "soft",
+            }
         },
         "DESKL": {
             "model_class": DESKL,
-            "model_args": {}
+            "model_args": {
+                "k": 8,
+                "DPF": True,
+                "IH_rate": 0.3,
+                "mode": "selection",
+                "knn_classifier": "knn",
+                "knn_metric": "minkowski",
+                "voting": "soft",
+                "n_jobs": -1,
+            }
         },
         "Exponential": {
             "model_class": Exponential,
-            "model_args": {}
+            "model_args": {
+                "k": 8,
+                "DFP": True,
+                "IH_rate": 0.3,
+                "mode": "selection",
+                "knn_classifier": "knn",
+                "knn_metric": "minkowski",
+                "voting": "soft",
+                "n_jobs": -1,
+            }
         },
         "Logarithmic": {
             "model_class": Logarithmic,
-            "model_args": {}
+            "model_args": {
+                "k": 8,
+                "DFP": True,
+                "IH_rate": 0.3,
+                "mode": "selection",
+                "knn_classifier": "knn",
+                "knn_metric": "minkowski",
+                "voting": "soft",
+                "n_jobs": -1,
+            }
         },
         "RRC": {
             "model_class": RRC,
-            "model_args": {}
+            "model_args": {
+                "k": 8,
+                "DFP": True,
+                "IH_rate": 0.3,
+                "mode": "selection",
+                "knn_classifier": "knn",
+                "knn_metric": "minkowski",
+                "voting": "soft",
+                "n_jobs": -1,
+            }
+        },
+        "METADES": {
+            "model_class": METADES,
+            "model_args": {
+                "k": 8,
+                "DFP": True,
+                "IH_rate": 0.3,
+                "mode": "selection",
+                "knn_classifier": "knn",
+                "knn_metric": "minkowski",
+                "knne": True,
+                "n_jobs": -1,
+                "voting": "soft",
+            }
         },
         "StackedClassifier": {
             "model_class": StackedClassifier,
             "model_args": {
+                "n_jobs": -1,
                 "meta_classifier": LogisticRegression(
                                         solver='saga',
                                         random_state=0,
