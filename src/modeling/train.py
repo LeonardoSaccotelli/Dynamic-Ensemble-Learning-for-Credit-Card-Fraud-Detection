@@ -139,7 +139,7 @@ def main(
             # Extract selected feature indices and names
             selected_indices, selected_names = get_final_selected_features(fitted_model, feature_names)
 
-            # Log resubstitution metrics with iteration and fold
+            # Log resubstitution metrics and test metrics with iteration and fold
             append_metrics(
                 resubstitution_metrics_summary,
                 iteration=iteration_idx + 1,
@@ -153,7 +153,6 @@ def main(
                 selected_features_names=selected_names,
             )
 
-            # Log test metrics with iteration and fold
             append_metrics(
                 test_metrics_summary,
                 iteration=iteration_idx + 1,
