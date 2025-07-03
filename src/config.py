@@ -23,10 +23,6 @@ MODELS_DIR = PROJ_ROOT / "models"
 REPORTS_DIR = PROJ_ROOT / "reports"
 FIGURES_DIR = REPORTS_DIR / "figures"
 
-# GENERAL SETTINGS
-RUN_ID = f"run_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-RANDOM_STATE = 42
-
 # PIPELINE AND FEATURES SELECTION
 NUMERICAL_FEATURES_TO_NORMALIZE = ["Log_Amount"]
 K_BEST_TO_KEEP = 20
@@ -37,17 +33,16 @@ CV_N_REPEATS = 10
 DSEL_SIZE = 0.2
 
 # HYPERPARAMETER TUNING SETTINGS FOR RANDOMIZED_SEARCH_CV
-N_ITER_TUNING = 50
+N_ITER_TUNING = 30
 CV_TUNING = 5
 SCORING_TUNING = "f1"
 N_JOBS_TUNING = -1
 
 # MODELS TO TRAIN
-BASE_MODELS = ["SVC", "KNeighborsClassifier",
-               "DecisionTreeClassifier", "RandomForestClassifier", "ExtraTreesClassifier",
+BASE_MODELS = ["DecisionTreeClassifier", "RandomForestClassifier", "ExtraTreesClassifier",
                "BalancedRandomForestClassifier", "RUSBoostClassifier",
                "XGBClassifier", "AdaBoostClassifier", "LogitBoostClassifier",
-               "MLPClassifier"]
+               "MLPClassifier", "SVC"]
 
 STATIC_ENS_MODELS = ["VotingClassifier", "VotingClassifier_weighted"]
 
@@ -58,9 +53,13 @@ DES_MODELS = ["APosteriori", "APriori", "LCA", "MLA", "OLA",
               "StackedClassifier"]
 
 POOL_MODELS = ["RandomForestClassifier", "SVC", "BalancedRandomForestClassifier",
-               "RUSBoostClassifier", "XGBClassifier", "AdaBoostClassifier",]
+               "RUSBoostClassifier", "XGBClassifier", "AdaBoostClassifier"]
 
 RESAMPLING_METHOD = "Under_0.005_SMOTEENN"
+
+# GENERAL SETTINGS
+RUN_ID = f"run_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{RESAMPLING_METHOD}"
+RANDOM_STATE = 42
 
 # If tqdm is installed, configure loguru with tqdm.write
 # https://github.com/Delgan/loguru/issues/135
