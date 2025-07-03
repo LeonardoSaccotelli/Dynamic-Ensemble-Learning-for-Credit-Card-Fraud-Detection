@@ -30,7 +30,7 @@ K_BEST_TO_KEEP = 20
 # EXPERIMENT AND EVALUATION SETTINGS
 CV_N_SPLITS = 10
 CV_N_REPEATS = 10
-DSEL_SIZE = 0.2
+DSEL_SIZE = 0.15
 
 # HYPERPARAMETER TUNING SETTINGS FOR RANDOMIZED_SEARCH_CV
 N_ITER_TUNING = 30
@@ -47,15 +47,15 @@ BASE_MODELS = ["DecisionTreeClassifier", "RandomForestClassifier", "ExtraTreesCl
 STATIC_ENS_MODELS = ["VotingClassifier", "VotingClassifier_weighted"]
 
 DES_MODELS = ["APosteriori", "APriori", "LCA", "MLA", "OLA",
-              "DESClustering", "DESP", "DESKNN",
-              "KNOP", "KNORAE", "KNORAU", "METADES",
-              "RRC","DESKL", "Exponential", "Logarithmic",
-              "StackedClassifier"]
+              "DESClustering", "DESP", "DESKNN",]
+              #"KNOP", "KNORAE", "KNORAU", "METADES",
+              #"RRC","DESKL", "Exponential", "Logarithmic",
+              #"StackedClassifier"]
 
 POOL_MODELS = ["RandomForestClassifier", "SVC", "BalancedRandomForestClassifier",
                "RUSBoostClassifier", "XGBClassifier", "AdaBoostClassifier"]
 
-RESAMPLING_METHOD = "Under_0.005_SMOTEENN"
+RESAMPLING_METHOD = None
 
 # GENERAL SETTINGS
 RUN_ID = f"run_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{RESAMPLING_METHOD}"
