@@ -113,8 +113,8 @@ def train_and_evaluate_base_model(
     start_score_time = time.time()
     y_test_pred = best_model.predict(X_test)
     end_score_time = time.time()
-
     y_test_pred_prob = best_model.predict_proba(X_test)[:, 1]
+
     test_metrics = compute_classification_metrics(y_test, y_test_pred, y_test_pred_prob)
     test_metrics["score_time"] = end_score_time - start_score_time
 
