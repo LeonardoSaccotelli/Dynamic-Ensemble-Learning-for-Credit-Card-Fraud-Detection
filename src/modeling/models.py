@@ -55,7 +55,7 @@ def get_base_model_and_search_space(model_name: str, random_state: int | None = 
         "KNeighborsClassifier": {
             "model_class": KNeighborsClassifier,
             "model_args": {
-                "n_jobs": -1,
+                "n_jobs": 1,
                 "algorithm": "auto",
                 "leaf_size": 30,
             },
@@ -105,7 +105,7 @@ def get_base_model_and_search_space(model_name: str, random_state: int | None = 
                 "bootstrap": True,  # Bootstrapping (sampling with replacement) enabled.
                 "oob_score": False,
 
-                "n_jobs": -1,
+                "n_jobs": 1,
                 # Weights associated with classes. The “balanced” mode uses the values of y to automatically
                 # adjust weights inversely proportional to class frequencies in the input data.
                 "class_weight": "balanced",
@@ -136,7 +136,7 @@ def get_base_model_and_search_space(model_name: str, random_state: int | None = 
                 "max_samples": None,
                 "oob_score": False,
 
-                "n_jobs": -1,
+                "n_jobs": 1,
                 # Weights associated with classes. The “balanced” mode uses the values of y to automatically
                 # adjust weights inversely proportional to class frequencies in the input data.
                 "class_weight": "balanced",
@@ -167,7 +167,7 @@ def get_base_model_and_search_space(model_name: str, random_state: int | None = 
                 "oob_score": False,
                 "sampling_strategy": "all", # Sampling information to sample the data set: "all"=resample all classes
                 "replacement": True, # Whether to sample randomly with replacement or not.
-                "n_jobs": -1,
+                "n_jobs": 1,
                 # Weights associated with classes. The “balanced” mode uses the values of y to automatically
                 # adjust weights inversely proportional to class frequencies in the input data.
                 "class_weight": "balanced",
@@ -238,7 +238,7 @@ def get_base_model_and_search_space(model_name: str, random_state: int | None = 
             "model_args": {
                 "objective": "binary:logistic",  # Binary classification with logistic loss.
                 "eval_metric": "logloss",  # Consistent with binary:logistic.
-                "n_jobs": -1,  # Parallel training.
+                "n_jobs": 1,  # Parallel training.
                 "random_state": random_state
             },
             "param_dist": {
@@ -259,7 +259,7 @@ def get_base_model_and_search_space(model_name: str, random_state: int | None = 
         "LGBMClassifier": {
             "model_args": {
                 "random_state": random_state,
-                "n_jobs": -1,
+                "n_jobs": 1,
                 "is_unbalance": True  # Handles imbalance by adjusting weights
             },
             "param_dist": {
@@ -468,7 +468,6 @@ def get_des_model(
                 "k": 8,
                 "DFP": True,
                 "IH_rate": 0.3,
-                "selection_method": "best",
                 "knn_classifier": "knn",
                 "knn_metric": "minkowski",
                 "knne": True,
@@ -482,7 +481,6 @@ def get_des_model(
                 "k": 8,
                 "DFP": True,
                 "IH_rate": 0.3,
-                "selection_method": "best",
                 "knn_classifier": "knn",
                 "knn_metric": "minkowski",
                 "knne": True,
@@ -547,7 +545,6 @@ def get_des_model(
             "model_class": DESKL,
             "model_args": {
                 "k": 8,
-                "DPF": True,
                 "IH_rate": 0.3,
                 "mode": "selection",
                 "knn_classifier": "knn",
