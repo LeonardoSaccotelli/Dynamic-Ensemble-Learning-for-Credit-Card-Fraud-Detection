@@ -9,8 +9,8 @@ from src.config import MODELS_DIR, PROCESSED_DATA_DIR
 from src.config import RUN_ID, RANDOM_STATE
 from src.config import NUMERICAL_FEATURES_TO_NORMALIZE, K_BEST_TO_KEEP
 from src.config import CV_N_SPLITS, CV_N_REPEATS, DSEL_SIZE
-from src.config import N_ITER_TUNING, CV_TUNING, SCORING_TUNING, N_JOBS_TUNING
-from src.config import BASE_MODELS, STATIC_ENS_MODELS, DES_MODELS, POOL_MODELS
+from src.config import N_ITER_TUNING, VAL_TUNING_SPLIT, VAL_TUNING_SIZE, SCORING_TUNING, N_JOBS_TUNING
+from src.config import BASE_MODELS, STATIC_ENS_MODELS, DES_MODELS, POOL_CONFIGS
 from src.config import RESAMPLING_METHOD
 from src.utils.io_utils import load_csv, save_dataframe_to_excel
 from src.modeling.train_utils import train_and_evaluate_base_model, train_and_evaluate_ensemble_model
@@ -31,7 +31,7 @@ def main(
         model_path: Path = MODELS_DIR
 ):
     # Set the results folder
-    results_path = model_path / RUN_ID
+    results_path = model_path / f"{RUN_ID}_{RESAMPLING_METHOD}"
     results_path.mkdir(parents=True, exist_ok=True)
 
     logger.info("Training models...")
@@ -127,7 +127,8 @@ def main(
                     X_test=X_test,
                     y_test=y_test,
                     n_iter=N_ITER_TUNING,
-                    cv=CV_TUNING,
+                    val_size=VAL_TUNING_SIZE,
+                    val_split=VAL_TUNING_SPLIT,
                     scoring=SCORING_TUNING,
                     random_state=RANDOM_STATE,
                     n_jobs=N_JOBS_TUNING,
@@ -144,6 +145,7 @@ def main(
                 resubstitution_metrics_summary,
                 iteration=iteration_idx + 1,
                 fold=fold_idx + 1,
+                pool_name="base_model",
                 model=base_model_name,
                 metrics=resubstitution_metrics,
                 data_split="resubstitution",
@@ -157,98 +159,104 @@ def main(
                 test_metrics_summary,
                 iteration=iteration_idx + 1,
                 fold=fold_idx + 1,
+                pool_name="base_model",
                 model=base_model_name,
                 metrics=test_metrics,
                 data_split="test",
                 fold_size=len(X_test),
             )
 
-        # Validate the pool of classifiers for static and dynamic ensemble models
-        invalid_pool = set(POOL_MODELS) - set(BASE_MODELS)
-        if invalid_pool:
-            raise ValueError(f"The following POOL_MODELS are not defined in BASE_MODELS: {invalid_pool}")
-        logger.info(f"Pool of classifiers for ensemble models (Static / DES): {POOL_MODELS}")
+        for pool_name, pool_models in POOL_CONFIGS.items():
+            logger.info(f"Using pool '{pool_name}': {pool_models}")
 
-        ################################# TRAINING STATIC ENS MODELS  #################################
-        # Prepare the pool_classifiers_static_ens (name, estimator) tuples for static ensemble
-        pool_classifiers_static_ens = [(name, fitted_base_models[name]) for name in POOL_MODELS]
+            # Validate the pool of classifiers for static and dynamic ensemble models
+            invalid_pool = set(pool_models) - set(BASE_MODELS)
+            if invalid_pool:
+                raise ValueError(f"Pool {pool_name} has undefined base models: {invalid_pool}")
+            logger.info(f"Pool of classifiers for ensemble models (Static / DES): {pool_name}={pool_models}")
 
-        for static_ensemble_model_name in STATIC_ENS_MODELS:
-            logger.info(f"Training static ensemble model: {static_ensemble_model_name}")
+            ################################# TRAINING STATIC ENS MODELS  #################################
+            # Prepare the pool_classifiers_static_ens (name, estimator) tuples for static ensemble
+            pool_classifiers_static_ens = [(name, fitted_base_models[name]) for name in pool_models]
 
-            # Compute weights on dsel dataset for VotingClassifier_weighted
-            weights = None
-            if static_ensemble_model_name == "VotingClassifier_weighted":
-                logger.info("Computing weights for VotingClassifier_weighted...")
-                weights = compute_voting_weights_from_dsel(
-                    pool=pool_classifiers_static_ens,
-                    X_dsel=X_dsel,
-                    y_dsel=y_dsel,
-                    metric="f1"
+            for static_ensemble_model_name in STATIC_ENS_MODELS:
+                logger.info(f"Training static ensemble model: {static_ensemble_model_name}")
+
+                # Compute weights on dsel dataset for VotingClassifier_weighted
+                weights = None
+                if static_ensemble_model_name == "VotingClassifier_weighted":
+                    logger.info("Computing weights for VotingClassifier_weighted...")
+                    weights = compute_voting_weights_from_dsel(
+                        pool=pool_classifiers_static_ens,
+                        X_dsel=X_dsel,
+                        y_dsel=y_dsel,
+                        metric="f1"
+                    )
+
+                # Get the static ensemble model to train on the pool
+                static_ensemble_model = get_static_ensemble_model(model_name=static_ensemble_model_name,
+                                                                  estimators=pool_classifiers_static_ens,
+                                                                  weights=weights)
+
+                # Train the static ensemble models using the pool of classifiers
+                fitted_static_ensemble_model, test_metrics = train_and_evaluate_ensemble_model(
+                    ensemble_model=static_ensemble_model,
+                    X_train=X_train,
+                    y_train=y_train,
+                    X_test=X_test,
+                    y_test=y_test
                 )
 
-            # Get the static ensemble model to train on the pool
-            static_ensemble_model = get_static_ensemble_model(model_name=static_ensemble_model_name,
-                                                              estimators=pool_classifiers_static_ens,
-                                                              weights=weights)
+                # Log test metrics with iteration and fold
+                append_metrics(
+                    test_metrics_summary,
+                    iteration=iteration_idx + 1,
+                    fold=fold_idx + 1,
+                    pool_name=pool_name,
+                    model=static_ensemble_model_name,
+                    metrics=test_metrics,
+                    data_split="test",
+                    fold_size=len(X_test),
+                )
 
-            # Train the static ensemble models using the pool of classifiers
-            fitted_static_ensemble_model, test_metrics = train_and_evaluate_ensemble_model(
-                ensemble_model=static_ensemble_model,
-                X_train=X_train,
-                y_train=y_train,
-                X_test=X_test,
-                y_test=y_test
-            )
+            ################################# TRAINING DES MODELS  #################################
+            # Prepare pool_classifiers for DESlib (list of fitted estimators)
+            pool_classifiers_des = [fitted_base_models[name] for name in pool_models]
 
-            # Log test metrics with iteration and fold
-            append_metrics(
-                test_metrics_summary,
-                iteration=iteration_idx + 1,
-                fold=fold_idx + 1,
-                model=static_ensemble_model_name,
-                metrics=test_metrics,
-                data_split="test",
-                fold_size=len(X_test),
-            )
+            for des_model_name in DES_MODELS:
+                logger.info(f"Training DES model: {des_model_name}")
 
-        ################################# TRAINING DES MODELS  #################################
-        # Prepare pool_classifiers for DESlib (list of fitted estimators)
-        pool_classifiers_des = [fitted_base_models[name] for name in POOL_MODELS]
+                # Get the DES model to train on the pool
+                des_model = get_des_model(model_name=des_model_name, pool_classifiers=pool_classifiers_des)
 
-        for des_model_name in DES_MODELS:
-            logger.info(f"Training DES model: {des_model_name}")
+                # Train the des models using the pool of classifiers
+                fitted_des_model, test_metrics = train_and_evaluate_ensemble_model(
+                    ensemble_model=des_model,
+                    X_train=X_dsel,
+                    y_train=y_dsel,
+                    X_test=X_test,
+                    y_test=y_test
+                )
 
-            # Get the DES model to train on the pool
-            des_model = get_des_model(model_name=des_model_name, pool_classifiers=pool_classifiers_des)
-
-            # Train the des models using the pool of classifiers
-            fitted_des_model, test_metrics = train_and_evaluate_ensemble_model(
-                ensemble_model=des_model,
-                X_train=X_dsel,
-                y_train=y_dsel,
-                X_test=X_test,
-                y_test=y_test
-            )
-
-            # Log test metrics with iteration and fold
-            append_metrics(
-                test_metrics_summary,
-                iteration=iteration_idx + 1,
-                fold=fold_idx + 1,
-                model=des_model_name,
-                metrics=test_metrics,
-                data_split="test",
-                fold_size=len(X_test),
-            )
+                # Log test metrics with iteration and fold
+                append_metrics(
+                    test_metrics_summary,
+                    iteration=iteration_idx + 1,
+                    fold=fold_idx + 1,
+                    pool_name=pool_name,
+                    model=des_model_name,
+                    metrics=test_metrics,
+                    data_split="test",
+                    fold_size=len(X_test),
+                )
 
         logger.success(f"Completed [ITERATION {iteration_idx + 1} - FOLD {fold_idx + 1}] - RUN_ID {run_id}]")
 
     # Store experimental results
     save_dataframe_to_excel(pd.DataFrame(resubstitution_metrics_summary),
-                            results_path / "resubstitution_metrics_summary.xlsx")
+                                results_path / "resubstitution_metrics_summary.xlsx")
     save_dataframe_to_excel(pd.DataFrame(test_metrics_summary),
-                            results_path / "test_metrics_summary.xlsx")
+                                results_path / "test_metrics_summary.xlsx")
 
     logger.success("Modeling training complete.")
 

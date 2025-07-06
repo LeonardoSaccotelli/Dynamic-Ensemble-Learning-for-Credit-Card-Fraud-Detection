@@ -34,7 +34,8 @@ DSEL_SIZE = 0.15
 
 # HYPERPARAMETER TUNING SETTINGS FOR RANDOMIZED_SEARCH_CV
 N_ITER_TUNING = 30
-CV_TUNING = 5
+VAL_TUNING_SIZE = 0.20
+VAL_TUNING_SPLIT = 1
 SCORING_TUNING = "f1"
 N_JOBS_TUNING = -1
 
@@ -42,23 +43,34 @@ N_JOBS_TUNING = -1
 BASE_MODELS = ["DecisionTreeClassifier", "RandomForestClassifier", "ExtraTreesClassifier",
                "BalancedRandomForestClassifier", "RUSBoostClassifier",
                "XGBClassifier", "AdaBoostClassifier", "LogitBoostClassifier",
-               "MLPClassifier", "SVC"]
+               "MLPClassifier", "SVC", "KNeighborsClassifier"]
 
 STATIC_ENS_MODELS = ["VotingClassifier", "VotingClassifier_weighted"]
 
 DES_MODELS = ["APosteriori", "APriori", "LCA", "MLA", "OLA",
-              "DESClustering", "DESP", "DESKNN",]
-              #"KNOP", "KNORAE", "KNORAU", "METADES",
-              #"RRC","DESKL", "Exponential", "Logarithmic",
-              #"StackedClassifier"]
+              "DESClustering", "DESP", "DESKNN",
+              "KNOP", "KNORAE", "KNORAU",
+              "RRC","DESKL", "Exponential", "Logarithmic",
+              "StackedClassifier"]
 
-POOL_MODELS = ["RandomForestClassifier", "SVC", "BalancedRandomForestClassifier",
-               "RUSBoostClassifier", "XGBClassifier", "AdaBoostClassifier"]
+POOL_CONFIGS = {
+    "compact": [
+        "RandomForestClassifier", "XGBClassifier", "SVC", "MLPClassifier"
+    ],
+    "full_diversity": [
+        "RandomForestClassifier", "ExtraTreesClassifier", "BalancedRandomForestClassifier",
+        "AdaBoostClassifier", "XGBClassifier", "SVC", "KNeighborsClassifier", "MLPClassifier"
+    ],
+    "boost_heavy": [
+        "RandomForestClassifier", "ExtraTreesClassifier", "AdaBoostClassifier",
+        "XGBClassifier", "RUSBoostClassifier"
+    ],
+}
 
 RESAMPLING_METHOD = None
 
 # GENERAL SETTINGS
-RUN_ID = f"run_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{RESAMPLING_METHOD}"
+RUN_ID = f"run_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
 RANDOM_STATE = 42
 
 # If tqdm is installed, configure loguru with tqdm.write

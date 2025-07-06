@@ -3,8 +3,9 @@ import numpy as np
 import pandas as pd
 from typing import Union, Tuple
 from sklearn.base import BaseEstimator
-from sklearn.model_selection import StratifiedKFold
-from sklearn.model_selection import RandomizedSearchCV
+from sklearn.model_selection import StratifiedShuffleSplit
+from sklearn.experimental import enable_halving_search_cv
+from sklearn.model_selection import HalvingRandomSearchCV
 from sklearn.pipeline import Pipeline
 
 from src.modeling.metrics_utils import compute_classification_metrics
@@ -18,7 +19,8 @@ def train_and_evaluate_base_model(
     X_test: Union[pd.DataFrame, np.ndarray],
     y_test: Union[pd.Series, np.ndarray],
     n_iter: int = 50,
-    cv: int = 5,
+    val_size: float = 0.20,
+    val_split: int = 1,
     scoring: str = "f1",
     random_state: int = 42,
     n_jobs: int = -1,
@@ -49,8 +51,11 @@ def train_and_evaluate_base_model(
     n_iter : int, optional
         Number of iterations for RandomizedSearchCV. Default is 50.
 
-    cv : int, optional
-        Number of cross-validation folds. Default is 5.
+    val_size : float, optional
+        Size of the validation set. Default is 0.20.
+
+    val_split : int, optional
+        Number of validation splits. Default is 1.
 
     scoring : str, optional
         Scoring metric for optimization. Default is 'f1'.
@@ -67,26 +72,39 @@ def train_and_evaluate_base_model(
         - fitted_model : estimator
             The model or pipeline fitted on training data.
         - tuning_results : dict
-            Dictionary with tuning summary including best parameters and scores.
+            Dictionary with tuning summary including the best parameters and scores.
         - resubstitution_metrics : dict
             Metrics on training data.
         - test_metrics : dict
             Metrics on test data.
     """
 
-    cvs = StratifiedKFold(n_splits=cv, shuffle=True, random_state=random_state)
+    splitter = StratifiedShuffleSplit(n_splits=val_split, test_size=val_size, random_state=random_state)
+    n_train = X_train.shape[0]
 
-    search = RandomizedSearchCV(
+    search = HalvingRandomSearchCV(
         estimator=base_model,
         param_distributions=search_space,
-        n_iter=n_iter,
         scoring=scoring,
-        cv=cvs,
+        cv=splitter,
         verbose=3,
         n_jobs=n_jobs,
         random_state=None,
         refit=True,
-        return_train_score=True
+        return_train_score=True,
+
+        # The number of candidate parameters to sample, at the first iteration.
+        # Start with all the configurations (n_iter).
+        n_candidates=n_iter,
+
+        # The proportion of candidates that are selected for each later iteration:
+        # factor=3 means that only one third of the candidates are selected.
+        factor=3,
+        resource="n_samples",  # Resource that increases with each iteration.
+        max_resources=n_train,
+
+        # The minimum amount of resource that any candidate is allowed to use for a given iteration.
+        min_resources=max(1, int(val_size * n_train))
     )
 
     start_tuning_time = time.time()

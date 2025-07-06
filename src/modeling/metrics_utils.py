@@ -111,6 +111,7 @@ def append_metrics(
     *,
     iteration: int,
     fold: int,
+    pool_name: str,
     model: str,
     metrics: Dict[str, float],
     data_split: str,
@@ -124,6 +125,7 @@ def append_metrics(
     store        : list receiving the row
     iteration    : 0-based outer repetition index
     fold         : 0-based fold index
+    pool_name    : the name given to the pool of classifiers
     model        : model name
     metrics      : {'accuracy': …, 'f1': …, …}
     data_split   : 'resub' | 'test' | 'dsel' … (whatever label you prefer)
@@ -133,6 +135,7 @@ def append_metrics(
     row = {
         "iteration": iteration,
         "fold": fold,
+        "pool_name": pool_name,
         "model": model,
         "split": data_split,             # identifies resubstitution vs. test at a glance
         **metrics,
