@@ -173,7 +173,7 @@ def main(
             invalid_pool = set(pool_models) - set(BASE_MODELS)
             if invalid_pool:
                 raise ValueError(f"Pool {pool_name} has undefined base models: {invalid_pool}")
-            logger.info(f"Pool of classifiers for ensemble models (Static / DES): {pool_name}={pool_models}")
+            logger.info(f"Using pool {pool_name} with models: {pool_models}")
 
             ################################# TRAINING STATIC ENS MODELS  #################################
             # Prepare the pool_classifiers_static_ens (name, estimator) tuples for static ensemble
