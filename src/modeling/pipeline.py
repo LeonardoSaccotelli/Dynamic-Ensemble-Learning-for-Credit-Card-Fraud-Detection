@@ -1,6 +1,8 @@
+from imblearn.under_sampling import RandomUnderSampler
 from sklearn.base import BaseEstimator
 from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
+from imblearn.pipeline import Pipeline as ImbPipeline
 from sklearn.preprocessing import StandardScaler
 from sklearn.feature_selection import SelectKBest, f_classif, SelectFromModel
 from sklearn.linear_model import LogisticRegression
@@ -12,7 +14,8 @@ def build_base_model_pipeline(
     k_best: int = 20,
     remainder: str = "passthrough",
     random_state: int = 42,
-) -> Pipeline:
+    sampler: Optional[SamplerMixin] = None,
+) -> Union[SklearnPipeline, ImbPipeline]:
     """
     Build a scikit-learn pipeline with scaling, feature selection pipeline,
     and final estimator.
@@ -34,11 +37,15 @@ def build_base_model_pipeline(
     random_state : int, optional
         Random state for reproducibility (used in SelectFromModel).
 
+    sampler : SamplerMixin, optional
+        An imblearn sampler (e.g., SMOTE(), RandomUnderSampler()).
+        If None, no resampling is applied.
+
     Returns
     -------
-    Pipeline
-        A scikit-learn pipeline that applies scaling, two-step feature
-        selection, and then fits the provided estimator.
+    Pipeline or ImbPipeline
+        A scikit-learn or imbalanced-learn pipeline that includes:
+        [sampler] -> preprocessing -> feature selection -> classifier.
     """
     # Step 1: Preprocessing (scaling selected columns)
     preprocessor = ColumnTransformer(
@@ -65,12 +72,18 @@ def build_base_model_pipeline(
         ))
     ])
 
-    # Step 3: Full pipeline
+    # Step 3: Classifier pipeline
     pipeline = Pipeline([
         ("preprocessing", preprocessor),
         ("feature_selection", feature_selection),
         ("classifier", estimator)
     ])
+
+    if sampler is not None:
+        pipeline = ImbPipeline([
+            ("imbalance", sampler),
+            ("model_pipeline", pipeline)
+        ])
 
     return pipeline
 
