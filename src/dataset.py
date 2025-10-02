@@ -13,17 +13,42 @@ app = typer.Typer()
 @app.command()
 def main(
     input_path: Path = RAW_DATA_DIR / "creditcardfraud.csv",
-):
+) -> None:
     """
-    Check the presence of raw dataset. If not present, it will download the dataset
-    directly from Kaggle. It will be stored in RAW_DATA_DIR.
+    Ensure the raw credit card fraud dataset is available locally, downloading it from Kaggle if missing.
+
+    The function checks whether ``input_path`` exists. If not, it attempts to download the dataset
+    ``mlg-ulb/creditcardfraud`` via ``kagglehub.dataset_download``, verifies the expected CSV file
+    (``creditcard.csv``) is present in the downloaded directory, creates ``RAW_DATA_DIR`` if needed,
+    and copies the file to ``input_path``. Progress and outcomes are logged.
 
     Parameters
     ----------
-    input_path : Path
-        Path to the cleaned dataset.
-    """
+    input_path : Path, optional
+        Expected file path of the raw dataset (default is ``RAW_DATA_DIR / "creditcardfraud.csv"``).
 
+    Returns
+    -------
+    None
+        All effects are side effects (download, directory creation, file copy, and logging).
+
+    Raises
+    ------
+    typer.Exit
+        If the dataset cannot be downloaded or the expected file is not found after download.
+        The exit code is set to ``1``.
+
+    Examples
+    --------
+    Use default location:
+
+    >>> main()
+
+    Specify a custom raw-data path:
+
+    >>> from pathlib import Path
+    >>> main(input_path=Path("data/raw/creditcardfraud.csv"))
+    """
     logger.info("Creating dataset...")
 
     # Check if the raw data exists.
