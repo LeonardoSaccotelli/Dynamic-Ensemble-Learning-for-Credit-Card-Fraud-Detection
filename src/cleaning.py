@@ -4,7 +4,7 @@ from loguru import logger
 import typer
 
 from src.config import RAW_DATA_DIR, INTERIM_DATA_DIR
-from src.utils.io_utils import  load_csv, save_csv
+from src.utils.io_utils import  load_csv, save_dataframe_to_csv
 
 app = typer.Typer()
 
@@ -13,19 +13,61 @@ app = typer.Typer()
 def main(
     input_path: Path = RAW_DATA_DIR / "creditcardfraud.csv",
     output_path: Path = INTERIM_DATA_DIR / "creditcardfraud_cleaned.csv"
-):
+) -> None:
     """
-    Perform data cleaning phase. It will check for null rows or columns.
-    It will also check for duplicated rows. Both null or duplicated rows are removed.
+    Clean the raw credit card fraud dataset and save a deduplicated, NA-filtered CSV.
+
+    The function loads the raw dataset, reports per-column missing values, drops rows
+    containing more than 50% missing entries, removes duplicate rows, logs the class
+    distribution (before and after deduplication) using the ``'Class'`` column, and
+    finally writes the cleaned data to ``output_path``.
 
     Parameters
     ----------
-    input_path : Path
-        Path to the raw dataset.
-    output_path : Path
-        Path to save the cleaned dataset
-    """
+    input_path : Path, optional
+        Path to the raw dataset CSV to be cleaned. Defaults to
+        ``RAW_DATA_DIR / "creditcardfraud.csv"``.
+    output_path : Path, optional
+        Destination path for the cleaned dataset CSV. Defaults to
+        ``INTERIM_DATA_DIR / "creditcardfraud_cleaned.csv"``.
 
+    Returns
+    -------
+    None
+        All effects are side effects (logging and file I/O).
+
+    Raises
+    ------
+    FileNotFoundError
+        If ``input_path`` does not exist (surfaced by ``load_csv``).
+    pandas.errors.EmptyDataError
+        If the input file is empty or has no columns to parse.
+    pandas.errors.ParserError
+        If the CSV is malformed and cannot be parsed.
+    KeyError
+        If the ``'Class'`` column is missing when computing class distributions.
+    PermissionError
+        If the cleaned file cannot be written due to insufficient permissions.
+    OSError
+        If an OS-related error occurs during directory creation or file writing.
+    ValueError
+        If writing the cleaned CSV fails for other reasons (surfaced by
+        ``save_dataframe_to_csv``).
+
+    Examples
+    --------
+    Clean using default locations:
+
+    >>> main()
+
+    Clean from a specific raw path to a custom output:
+
+    >>> from pathlib import Path
+    >>> main(
+    ...     input_path=Path("data/raw/creditcardfraud.csv"),
+    ...     output_path=Path("data/interim/creditcardfraud_cleaned.csv")
+    ... )
+    """
     logger.info("Cleaning dataset...")
 
     logger.info(f"Loading raw dataset from: {input_path}")
@@ -75,7 +117,7 @@ def main(
 
     # Save cleaned dataset
     logger.info(f"Saving cleaned dataset to: {output_path}")
-    save_csv(df, output_path, index=False)
+    save_dataframe_to_csv(df, output_path, index=False)
 
     logger.success("Data cleaning complete.")
 
