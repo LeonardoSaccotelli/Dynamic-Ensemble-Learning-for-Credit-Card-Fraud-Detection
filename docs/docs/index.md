@@ -1,4 +1,4 @@
-# Dynamic Ensemble Learning for Credit Card Fraud Detection documentation!
+# Dynamic-Ensemble-Learning-for-Credit-Card-Fraud-Detection documentation!
 
 ## Description
 
