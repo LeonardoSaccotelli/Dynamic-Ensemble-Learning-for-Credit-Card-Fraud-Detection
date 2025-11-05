@@ -4,7 +4,7 @@
     <img src="https://img.shields.io/badge/CCDS-Project%20template-328F97?logo=cookiecutter" />
 </a>
 
-A short description of the project.
+Dynamic Ensemble Learning for Credit Card Fraud Detection using Oversampling & Undersampling Techniques
 
 ## Project Organization
 
