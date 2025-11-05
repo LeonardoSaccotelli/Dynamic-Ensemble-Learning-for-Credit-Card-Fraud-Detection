@@ -69,10 +69,15 @@ format:
 # PROJECT RULES                                                                 #
 #################################################################################
 
-## Make dataset (use 'make dataset')
+## Make dataset (use 'make dataset' to download the initial full dataset in data/external from kaggle)
 .PHONY: dataset
 dataset:
 	$(PYTHON_INTERPRETER) fraud_dynamic_ensemble/dataset.py
+
+## Make dataset subsampling (use 'make dataset_subsample' to sampling a subset of data for modeling)
+.PHONY: dataset_subsample
+dataset_subsample:
+	$(PYTHON_INTERPRETER) fraud_dynamic_ensemble/dataset_subsample.py
 
 #################################################################################
 # Self Documenting Commands                                                     #
