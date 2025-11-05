@@ -69,7 +69,7 @@ format:
 # PROJECT RULES                                                                 #
 #################################################################################
 
-## Make dataset
+## Make dataset (use 'make dataset')
 .PHONY: dataset
 dataset:
 	$(PYTHON_INTERPRETER) fraud_dynamic_ensemble/dataset.py
