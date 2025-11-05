@@ -2,7 +2,7 @@
 
 ## Description
 
-A short description of the project.
+Dynamic Ensemble Learning for Credit Card Fraud Detection using Oversampling & Undersampling Techniques
 
 ## Commands
 
