@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from pathlib import Path
 
 import kagglehub
@@ -36,17 +38,6 @@ def main(
     typer.Exit
         If the dataset cannot be downloaded or the expected file is not found after download.
         The exit code is set to ``1``.
-
-    Examples
-    --------
-    Use default location:
-
-    >>> main()
-
-    Specify a custom external-data path:
-
-    >>> from pathlib import Path
-    >>> main(output_path=Path("data/external/creditcardfraud.csv"))
     """
 
     logger.info("Running fraud_dynamic_ensemble/dataset.py ...")
