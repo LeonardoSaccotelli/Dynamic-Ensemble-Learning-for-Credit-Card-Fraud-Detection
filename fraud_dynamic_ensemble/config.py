@@ -1,3 +1,4 @@
+from datetime import datetime
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -20,6 +21,12 @@ MODELS_DIR = PROJ_ROOT / "models"
 
 REPORTS_DIR = PROJ_ROOT / "reports"
 FIGURES_DIR = REPORTS_DIR / "figures"
+
+# SEED FOR REPRODUCIBILITY
+RANDOM_STATE = 42
+
+# EXPERIMENT TRACKING
+RUN_ID = f"run_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
 
 # If tqdm is installed, configure loguru with tqdm.write
 # https://github.com/Delgan/loguru/issues/135
