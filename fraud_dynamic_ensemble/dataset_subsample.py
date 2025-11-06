@@ -8,8 +8,8 @@ import pandas as pd
 import typer
 
 from fraud_dynamic_ensemble.config import (
-    EXTERNAL_DATA_DIR,
     FRAC,
+    INTERIM_DATA_DIR,
     N_ROWS,
     POLICY,
     RANDOM_STATE,
@@ -26,8 +26,8 @@ app = typer.Typer()
 
 @app.command()
 def main(
-    input_path: Path = EXTERNAL_DATA_DIR / "creditcardfraud.csv",
-    output_path: Path = RAW_DATA_DIR / "credit_card_fraud_subsample.csv",
+    input_path: Path = RAW_DATA_DIR / "creditcardfraud.csv",
+    output_path: Path = INTERIM_DATA_DIR / "credit_card_fraud_subsample.csv",
     target: str = "Class",
     policy: Literal["random", "stratified", "keep_all_minority"] = POLICY,
     n_rows: int | None = N_ROWS,
@@ -35,22 +35,22 @@ def main(
     seed: int = RANDOM_STATE,
 ) -> None:
     """
-    CLI entry-point to create a RAW subsample from the EXTERNAL full dataset (CSV).
+    CLI entry-point to create a subsample from the RAW full dataset.
 
     The function:
-    1) Loads the external dataset,
+    1) Loads the raw dataset,
     2) Logs **pre-sampling** class stats,
     3) Validates the requested sampling policy and derives the exact target size
        from either ``n_rows`` or ``frac``,
     4) Applies the chosen sampling strategy,
     5) Logs **post-sampling** class stats,
-    6) Writes the subsample to ``output_path`` as CSV.
+    6) Writes the subsample to ``output_path``.
 
     Parameters
     ----------
-    input_path : pathlib.Path, default: EXTERNAL_DATA_DIR / "creditcardfraud.csv"
-        Path to the **external** full dataset (CSV).
-    output_path : pathlib.Path, default: RAW_DATA_DIR / "credit_card_fraud_subsample.csv"
+    input_path : pathlib.Path, default: RAW_DATA_DIR / "creditcardfraud.csv"
+        Path to the **raw** full dataset (CSV).
+    output_path : pathlib.Path, default: INTERIM_DATA_DIR / "credit_card_fraud_subsample.csv"
         Destination path for the **raw subsample** (CSV).
     target : str, default: "Class"
         Name of the target column (binary in typical usage).
@@ -88,24 +88,24 @@ def main(
 
     logger.info("Running fraud_dynamic_ensemble/dataset_subsample.py ...")
 
-    # Check if the original EXTERNAL dataset exists
+    # Check if the original RAW dataset exists
     if not input_path.exists():
-        logger.error(f"EXTERNAL file not found: {input_path}")
+        logger.error(f"RAW file not found: {input_path}")
         logger.error("Run the downloader first, e.g.: `python fraud_dynamic_ensemble/dataset.py`.")
         raise typer.Exit(code=1)
 
-    # Ensure RAW_DATA_DIR exists
-    RAW_DATA_DIR.mkdir(parents=True, exist_ok=True)
+    # Ensure INTERIM_DATA_DIR exists
+    INTERIM_DATA_DIR.mkdir(parents=True, exist_ok=True)
 
-    # Load dataset from EXTERNAL_DATA_DIR and check if the target exists in the df
-    logger.info(f"Reading EXTERNAL CSV: {input_path}")
+    # Load dataset from RAW_DATA_DIR and check if the target exists in the df
+    logger.info(f"Reading RAW CSV: {input_path}")
     df = pd.read_csv(input_path)
 
     if target not in df.columns:
         logger.error(f"Target column '{target}' not found. Available columns: {list(df.columns)}")
         raise typer.Exit(code=1)
 
-    # Print statistics for the original EXTERNAL dataset
+    # Print statistics for the original RAW dataset
     rows, cols = df.shape
     counts, perc = get_class_stats(df, target)
 
@@ -155,9 +155,9 @@ def main(
 
     # Store subsampling dataset to csv
     sample.to_csv(output_path, index=False)
-    logger.success(f"Wrote RAW subsample to: {output_path}")
+    logger.success(f"Wrote subsample to: {output_path}")
 
-    logger.success("Running fraud_dynamic_ensemble/dataset_subsample.py completed successfully!")
+    logger.success("Running fraud_dynamic_ensemble/dataset_subsample.py COMPLETED!")
 
 
 if __name__ == "__main__":
