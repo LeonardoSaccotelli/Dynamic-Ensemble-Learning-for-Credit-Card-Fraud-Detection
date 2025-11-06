@@ -90,7 +90,7 @@ def main(
 
     # Check if the original EXTERNAL dataset exists
     if not input_path.exists():
-        logger.error(f"EXTERNAL file not found: {input_path}")
+        logger.error(f"Dataset not found at path:\n\t{input_path}")
         logger.error("Run the downloader first, e.g.: `python fraud_dynamic_ensemble/dataset.py`.")
         raise typer.Exit(code=1)
 
@@ -98,7 +98,7 @@ def main(
     RAW_DATA_DIR.mkdir(parents=True, exist_ok=True)
 
     # Load dataset from EXTERNAL_DATA_DIR and check if the target exists in the df
-    logger.info(f"Reading EXTERNAL CSV: {input_path}")
+    logger.info(f"Loading EXTERNAL dataset at path:\n\t{input_path}")
     df = pd.read_csv(input_path)
 
     if target not in df.columns:
@@ -155,7 +155,7 @@ def main(
 
     # Store subsampling dataset to csv
     sample.to_csv(output_path, index=False)
-    logger.success(f"Wrote RAW subsample to: {output_path}")
+    logger.success(f"Wrote RAW subsampled dataset to path:\n\t{output_path}")
 
     logger.success("Running fraud_dynamic_ensemble/dataset_subsample.py COMPLETED!")
 
