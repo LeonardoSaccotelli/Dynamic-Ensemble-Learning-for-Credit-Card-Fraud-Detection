@@ -42,22 +42,21 @@ def main(
 
     logger.info("Running fraud_dynamic_ensemble/dataset.py ...")
 
-    # Check if the external data exists.
-    # If data does not exist, try to download from kagglehub.
+    # Check if the external data exists. If data does not exist, try to download from kagglehub.
     if not output_path.exists():
-        logger.warning(f"Data not found in external directory: {output_path}")
+        logger.warning(f"Dataset not found at path:\n\t{output_path}")
         logger.info("Attempting to download dataset from Kaggle...")
 
         try:
             kaggle_dest_path = kagglehub.dataset_download("mlg-ulb/creditcardfraud")
-            logger.success(f"Dataset downloaded to: {kaggle_dest_path}")
+            logger.success(f"Dataset downloaded to:\n\t{kaggle_dest_path}")
 
             # Assume file is called 'creditcard.csv' inside the downloaded folder
             downloaded_file = Path(kaggle_dest_path) / "creditcard.csv"
 
             # Check if data have been downloaded correctly.
             if not downloaded_file.exists():
-                logger.error("Downloaded dataset file not found in the expected location.")
+                logger.error(f"Downloaded file not found at the expected path:\n\t{downloaded_file}")
                 raise typer.Exit(code=1)
 
             # Ensure EXTERNAL_DATA_DIR exists
@@ -65,13 +64,13 @@ def main(
 
             # Copy file to expected input_path
             output_path.write_bytes(downloaded_file.read_bytes())
-            logger.success(f"Copied dataset to external folder: {output_path}")
+            logger.success(f"Copied dataset to path:\n\t{output_path}")
 
         except Exception as e:
             logger.error(f"Failed to download dataset: {e}")
             raise typer.Exit(code=1)
     else:
-        logger.info(f"Original dataset ALREADY available in: {output_path}")
+        logger.info(f"Dataset ALREADY available at path:\n\t{output_path}")
 
     logger.success("Running fraud_dynamic_ensemble/dataset.py COMPLETED!")
 
