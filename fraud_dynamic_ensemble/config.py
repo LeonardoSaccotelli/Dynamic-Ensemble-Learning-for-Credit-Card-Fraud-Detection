@@ -28,6 +28,11 @@ RANDOM_STATE = 42
 # EXPERIMENT TRACKING
 RUN_ID = f"run_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
 
+# DATASET_SUBSAMPLE.PY PARAMETERS
+POLICY = "keep_all_minority"
+N_ROWS = 10000
+FRAC = None
+
 # If tqdm is installed, configure loguru with tqdm.write
 # https://github.com/Delgan/loguru/issues/135
 try:
