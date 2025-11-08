@@ -182,7 +182,7 @@ models/*
 outs/*
 !outs/.gitkeep
 
-data/*/*
+data/external/*
 !data/*/.gitkeep
 slurm_out/*
 
