@@ -195,3 +195,5 @@ demo/images/entities/*
 
 docs/*.csv
 models_to_pass
+
+*.docx
