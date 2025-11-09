@@ -86,7 +86,7 @@ def main(
     - For ``'keep_all_minority'``, the requested size must be >= minority count.
     """
 
-    logger.info("Running fraud_dynamic_ensemble/dataset_subsample.py ...")
+    logger.info("Running fraud_dynamic_ensemble/dataset_sampling.py ...")
 
     # Check if the original EXTERNAL dataset exists
     if not input_path.exists():
@@ -157,7 +157,7 @@ def main(
     sample.to_csv(output_path, index=False, header=True, sep=",")
     logger.success(f"Wrote RAW subsampled dataset to path:\n\t{output_path}")
 
-    logger.success("Running fraud_dynamic_ensemble/dataset_subsample.py COMPLETED!")
+    logger.success("Running fraud_dynamic_ensemble/dataset_sampling.py COMPLETED!")
 
 
 if __name__ == "__main__":
