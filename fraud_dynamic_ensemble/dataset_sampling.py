@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Literal
 
 from loguru import logger
 import pandas as pd
@@ -13,11 +12,11 @@ from fraud_dynamic_ensemble.config import (
     N_ROWS,
     POLICY,
     RANDOM_STATE,
+    RATIO,
     RAW_DATA_DIR,
 )
 from fraud_dynamic_ensemble.utils.sampling import (
     apply_sampling,
-    derive_target_size,
     get_class_stats,
 )
 
@@ -27,24 +26,24 @@ app = typer.Typer()
 @app.command()
 def main(
     input_path: Path = EXTERNAL_DATA_DIR / "creditcardfraud.csv",
-    output_path: Path = RAW_DATA_DIR / "credit_card_fraud_subsample.csv",
+    output_path: Path = RAW_DATA_DIR / "credit_card_fraud_sampling.csv",
     target: str = "Class",
-    policy: Literal["random", "stratified", "keep_all_minority"] = POLICY,
+    policy: str = POLICY,
     n_rows: int | None = N_ROWS,
     frac: float | None = FRAC,
+    ratio: int | None = RATIO,
     seed: int = RANDOM_STATE,
 ) -> None:
     """
-    CLI entry-point to create a RAW subsample from the EXTERNAL full dataset.
+    CLI entry-point (dataset_sampling.py) to create a RAW subsample from the EXTERNAL full dataset.
 
-    The function:
-    1) Loads the external dataset,
-    2) Logs **pre-sampling** class stats,
-    3) Validates the requested sampling policy and derives the exact target size
-       from either ``n_rows`` or ``frac``,
-    4) Applies the chosen sampling strategy,
-    5) Logs **post-sampling** class stats,
-    6) Writes the subsample to ``output_path`` as CSV.
+    Workflow
+    --------
+    1) Load the external dataset (CSV).
+    2) Log **pre-sampling** class statistics.
+    3) Apply the chosen sampling strategy via ``apply_sampling``.
+    4) Log **post-sampling** class statistics.
+    5) Write the subsample to ``output_path`` as CSV.
 
     Parameters
     ----------
@@ -53,99 +52,82 @@ def main(
     output_path : pathlib.Path, default: RAW_DATA_DIR / "credit_card_fraud_subsample.csv"
         Destination path for the **raw subsample** (CSV).
     target : str, default: "Class"
-        Name of the target column (binary in typical usage).
+        Name of the target column.
     policy : {'random', 'stratified', 'keep_all_minority'}, default: POLICY
-        Sampling policy:
-        - ``'random'``: uniform random (no class ratio preservation),
-        - ``'stratified'``: preserve class proportions (scikit-learn),
-        - ``'keep_all_minority'``: include **all** minority rows and fill with majority.
+        Sampling policy (case-insensitive).
     n_rows : int or None, optional, default: N_ROWS
-        Absolute number of rows requested. Mutually exclusive with ``frac``.
+        Absolute number of rows requested (mutually exclusive with ``frac``).
     frac : float or None, optional, default: FRAC
-        Fraction of the dataset requested in ``(0, 1]``. Mutually exclusive with ``n_rows``.
+        Fraction of the dataset in ``(0, 1]`` (mutually exclusive with ``n_rows``).
+    ratio : int or None, optional, default: RATIO
+        Only for ``'keep_all_minority'``: majority-per-minority ratio (e.g., 50 → 1:50).
     seed : int, default: RANDOM_STATE
-        Random seed for reproducibility across policies.
+        Random seed for reproducibility.
 
     Returns
     -------
     None
-        Side-effecting function: logs, sampling, and CSV writing.
+        Side effects only (logging, sampling, CSV writing).
 
     Raises
     ------
     typer.Exit
         If ``input_path`` does not exist or ``target`` is missing from the dataset.
     ValueError
-        May be raised by ``derive_target_size`` (invalid size request/policy) or
-        by ``apply_sampling`` (e.g., non-binary target for ``keep_all_minority``).
+        May be raised by the underlying sampling functions for invalid combinations
+        (e.g., both ``n_rows`` and ``frac``, non-binary target for keep-all-minority, etc.).
 
     Notes
     -----
     - I/O is **CSV-only** by design.
-    - For ``'stratified'``, at least one sample per class is required in the split.
-    - For ``'keep_all_minority'``, the requested size must be >= minority count.
     """
-
     logger.info("Running fraud_dynamic_ensemble/dataset_sampling.py ...")
 
-    # Check if the original EXTERNAL dataset exists
+    # Preconditions
     if not input_path.exists():
         logger.error(f"Dataset not found at path:\n\t{input_path}")
         logger.error("Run the downloader first, e.g.: `python fraud_dynamic_ensemble/dataset.py`.")
         raise typer.Exit(code=1)
 
-    # Ensure RAW_DATA_DIR exists
     RAW_DATA_DIR.mkdir(parents=True, exist_ok=True)
 
-    # Load dataset from EXTERNAL_DATA_DIR and check if the target exists in the df
+    # Load and basic checks
     logger.info(f"Loading EXTERNAL dataset at path:\n\t{input_path}")
-    df = pd.read_csv(input_path, header=0, sep=",")
+    df = pd.read_csv(input_path)
 
     if target not in df.columns:
         logger.error(f"Target column '{target}' not found. Available columns: {list(df.columns)}")
         raise typer.Exit(code=1)
 
-    # Print statistics for the original EXTERNAL dataset
+    # Report BEFORE
     rows, cols = df.shape
     counts, perc = get_class_stats(df, target)
-
-    logger.info(f"Shape: rows={rows}, cols={cols}")
-    logger.info("Class distribution (before sampling):")
+    logger.info(f"External shape: rows={rows}, cols={cols}")
+    logger.info("Class distribution (before):")
     for cls in counts.index:
         logger.info(f"  class={cls}: count={counts[cls]}, perc={perc[cls]:.6f}")
 
-    # Validate policy and derive target size from n_rows or from frac
-    valid_policies = {"random", "stratified", "keep_all_minority"}
-    if policy not in valid_policies:
-        logger.error(f"Invalid --policy '{policy}'. Choose from {sorted(valid_policies)}.")
-        raise typer.Exit(code=1)
-
-    minority_count = int(counts.min())
-    target_size = derive_target_size(
-        total_rows=rows,
-        policy=policy,
-        n_rows=n_rows,
-        frac=frac,
-        minority_count=minority_count,
-    )
-
+    # Normalize policy for logging consistency
+    policy_key = (policy or "").strip().lower()
     logger.info(
-        f"Sampling plan → policy='{policy}', seed={seed}, "
-        f"requested_size={target_size} (minority_count={minority_count})"
+        f"Sampling plan → policy='{policy_key}', seed={seed}, "
+        f"n_rows={n_rows}, frac={frac}, ratio={ratio}"
     )
 
-    # Apply requested sampling strategy
+    # Apply sampling
     sample = apply_sampling(
         df,
-        policy=policy,
-        target=target,
-        target_size=target_size,
+        policy=policy_key,
+        target=target,  # used by 'stratified' & 'keep_all_minority'
+        n_rows=n_rows,
+        frac=frac,
+        ratio=ratio,  # only for 'keep_all_minority'
         seed=seed,
     )
 
     logger.info(f"Sample prepared: rows={len(sample)}, cols={sample.shape[1]}")
 
-    # Post-sampling statistics
+    # Report AFTER
     rows_after, cols_after = sample.shape
     counts_after, perc_after = get_class_stats(sample, target)
     logger.info(f"Shape (after): rows={rows_after}, cols={cols_after}")
@@ -153,11 +135,10 @@ def main(
     for cls in counts_after.index:
         logger.info(f"  class={cls}: count={counts_after[cls]}, perc={perc_after[cls]:.6f}")
 
-    # Store subsampling dataset to csv
-    sample.to_csv(output_path, index=False, header=True, sep=",")
+    # Store the sampling dataset
+    sample.to_csv(output_path, index=False)
     logger.success(f"Wrote RAW subsampled dataset to path:\n\t{output_path}")
-
-    logger.success("Running fraud_dynamic_ensemble/dataset_sampling.py COMPLETED!")
+    logger.success("Completed fraud_dynamic_ensemble/dataset_sampling.py")
 
 
 if __name__ == "__main__":
