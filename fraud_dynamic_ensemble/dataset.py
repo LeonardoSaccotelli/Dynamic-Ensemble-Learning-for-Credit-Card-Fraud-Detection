@@ -56,7 +56,9 @@ def main(
 
             # Check if data have been downloaded correctly.
             if not downloaded_file.exists():
-                logger.error(f"Downloaded file not found at the expected path:\n\t{downloaded_file}")
+                logger.error(
+                    f"Downloaded file not found at the expected path:\n\t{downloaded_file}"
+                )
                 raise typer.Exit(code=1)
 
             # Ensure EXTERNAL_DATA_DIR exists
