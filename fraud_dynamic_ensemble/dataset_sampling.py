@@ -15,7 +15,7 @@ from fraud_dynamic_ensemble.config import (
     RATIO,
     RAW_DATA_DIR,
 )
-from fraud_dynamic_ensemble.utils.sampling import (
+from fraud_dynamic_ensemble.data_preparation.sampling import (
     apply_sampling,
     get_class_stats,
 )
