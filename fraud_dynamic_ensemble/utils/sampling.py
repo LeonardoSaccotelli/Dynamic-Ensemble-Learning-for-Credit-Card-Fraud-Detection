@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import Literal
-
 import pandas as pd
 from sklearn.model_selection import train_test_split
 
@@ -60,236 +58,189 @@ def get_class_stats(df: pd.DataFrame, target: str) -> tuple[pd.Series, pd.Series
     return counts, perc
 
 
-def derive_target_size(
-    total_rows: int,
+def random_sampling(
+    df: pd.DataFrame,
+    n_rows: int | None = None,
+    frac: float | None = None,
     *,
-    policy: Literal["random", "stratified", "keep_all_minority"],
-    n_rows: int | None,
-    frac: float | None,
-    minority_count: int,
-) -> int:
+    seed: int | None = None,
+) -> pd.DataFrame:
     """
-    Convert a size request (``n_rows`` or ``frac``) into an integer target sample size.
+    Perform simple random sampling **without replacement**.
 
-    The function enforces policy-specific constraints and clamps the computed size to
-    feasible bounds given the dataset size and, when applicable, the minority-class
-    count.
-
-    Parameters
-    ----------
-    total_rows : int
-        Total number of rows in the full dataset (must be >= 1).
-    policy : {'random', 'stratified', 'keep_all_minority'}
-        Sampling policy. If ``'keep_all_minority'`` is selected, the target size
-        must be at least the number of minority samples.
-    n_rows : int or None
-        Absolute number of rows requested. Mutually exclusive with ``frac``.
-    frac : float or None
-        Fraction of the dataset requested, in the interval ``(0, 1]``. Mutually
-        exclusive with ``n_rows``.
-    minority_count : int
-        Number of minority-class rows in the dataset. Used only to validate
-        the ``'keep_all_minority'`` policy.
-
-    Returns
-    -------
-    int
-        Target sample size as a positive integer. For ``'keep_all_minority'``,
-        clamped to ``[minority_count, total_rows]``; otherwise clamped to
-        ``[1, total_rows]``.
-
-    Raises
-    ------
-    ValueError
-        - If both or neither of ``n_rows`` and ``frac`` are provided.
-        - If ``frac`` is not in ``(0, 1]``.
-        - If ``n_rows`` is not a positive integer.
-        - If ``policy='keep_all_minority'`` and the requested size is smaller
-          than ``minority_count``.
-
-    Notes
-    -----
-    - When ``frac`` is used, the size is computed as ``int(total_rows * frac)``,
-      i.e., flooring by design for determinism.
-    - The caller is responsible for ensuring ``minority_count`` is correct for the
-      same dataset of size ``total_rows``.
-
-    Examples
-    --------
-    >>> derive_target_size(total_rows=270000, policy="random", n_rows=50000, frac=None, minority_count=492)
-    50000
-    >>> derive_target_size(total_rows=270000, policy="stratified", n_rows=None, frac=0.10, minority_count=492)
-    27000
-    >>> derive_target_size(total_rows=270000, policy="keep_all_minority", n_rows=80000, frac=None, minority_count=492)
-    80000
-    """
-    # Enforce mutual exclusivity between absolute and fractional requests.
-    if (n_rows is not None) and (frac is not None):
-        raise ValueError("Provide exactly one of --n-rows or --frac (not both).")
-
-    # Resolve the requested size from frac or n_rows.
-    if frac is not None:
-        if not (0.0 < frac <= 1.0):
-            raise ValueError("--frac must be in the interval (0, 1].")
-        requested = int(total_rows * frac)  # floor by design
-    elif n_rows is not None:
-        if n_rows <= 0:
-            raise ValueError("--n-rows must be a positive integer.")
-        requested = n_rows
-    else:
-        # Neither n_rows nor frac provided → cannot derive a size.
-        raise ValueError("You must provide either --n-rows or --frac.")
-
-    # Clamp to dataset bounds (never more than total_rows, never less than 1).
-    requested = min(requested, total_rows)
-    requested = max(requested, 1)
-
-    # Additional constraint for keep_all_minority: ensure all minority rows can be kept.
-    if policy == "keep_all_minority" and requested < minority_count:
-        raise ValueError(
-            f"Requested target size ({requested}) is smaller than the minority count "
-            f"({minority_count}). With --policy keep_all_minority you must request at "
-            "least the number of minority samples."
-        )
-
-    return requested
-
-
-def sample_random(df: pd.DataFrame, n: int, *, seed: int) -> pd.DataFrame:
-    """
-    Draw a non-stratified random sample of exactly ``n`` rows from a DataFrame.
-
-    The function samples rows uniformly at random (without replacement), shuffles
-    them, and resets the index. Class proportions (if any) are **not** preserved.
-    For reproducibility, a fixed ``seed`` is used to set the random state.
+    Exactly one of ``n_rows`` or ``frac`` must be provided. Sampling is
+    reproducible when ``seed`` is set (forwarded to ``random_state``).
+    The returned sample is shuffled and its index reset.
 
     Parameters
     ----------
     df : pandas.DataFrame
         Input dataset to sample from.
-    n : int
-        Number of rows to sample. Must be a positive integer. If ``n`` exceeds
-        ``len(df)``, it is clamped to ``len(df)``.
-    seed : int
+    n_rows : int or None, optional
+        Absolute number of rows to sample. Mutually exclusive with ``frac``.
+        If larger than ``len(df)``, it is clamped to ``len(df)``.
+    frac : float or None, optional
+        Fraction of rows to sample, strictly in ``(0, 1]``. Mutually exclusive
+        with ``n_rows``.
+    seed : int or None, optional
         Random seed for reproducibility.
 
     Returns
     -------
     pandas.DataFrame
-        A randomly sampled DataFrame with exactly ``min(n, len(df))`` rows,
-        shuffled and with a zero-based, consecutive index.
+        Randomly sampled DataFrame with a consecutive, zero-based index.
 
     Raises
     ------
     ValueError
-        If ``n`` is not a positive integer.
+        If **both or neither** of ``n_rows`` and ``frac`` are provided;
+        if ``n_rows`` is not positive; or if ``frac`` is not in ``(0, 1]``.
 
     Notes
     -----
     - Sampling is performed **without replacement**.
-    - This method does **not** preserve class ratios. If you need to preserve
-      class proportions, use ``sample_stratified`` instead.
+    - With ``frac``, pandas determines the exact sample size via internal
+      rounding. If you need an exact size, compute it and pass via ``n_rows``.
 
     Examples
     --------
+    Basic usage with a fixed count:
+
     >>> import pandas as pd
-    >>> df = pd.DataFrame({"x": range(5)})
-    >>> sample_random(df, n=3, seed=42).shape[0]
+    >>> df = pd.DataFrame({"x": range(10)})
+    >>> out = random_sampling(df, n_rows=3, seed=42)
+    >>> len(out)
     3
+
+    Fractional sampling (0.5 → 5 rows for a 10-row DataFrame):
+
+    >>> out = random_sampling(df, frac=0.5, seed=0)
+    >>> len(out)
+    5
     """
-    # Validate requested size
-    if n <= 0:
-        raise ValueError("n must be a positive integer.")
+    using_n = n_rows is not None
+    using_f = frac is not None
 
-    # Clamp to available rows (uniform intent: “take as many as possible up to n”)
-    if n > len(df):
-        n = len(df)
+    # Enforce mutual exclusivity between absolute and fractional requests.
+    if using_n == using_f:
+        raise ValueError("Provide exactly one of 'n_rows' or 'frac' (not both or neither).")
 
-    # Uniform random sample without replacement; reset index for cleanliness
-    return df.sample(n=n, random_state=seed).reset_index(drop=True)
+    if using_n:
+        # Validate n_rows
+        if n_rows is None or n_rows <= 0:
+            raise ValueError("n_rows must be a positive integer.")
+        size = min(n_rows, len(df))
+        sample_df = df.sample(n=size, replace=False, random_state=seed)
+    else:
+        # Validate frac
+        if not (0.0 < frac <= 1.0):
+            raise ValueError("frac must be in the interval (0, 1].")
+        sample_df = df.sample(frac=frac, replace=False, random_state=seed)
+
+    return sample_df.reset_index(drop=True)
 
 
-def sample_stratified(
+def stratified_random_sampling(
     df: pd.DataFrame,
+    stratify_by: str,
+    n_rows: int | None = None,
+    frac: float | None = None,
     *,
-    target: str,
-    target_size: int,
-    seed: int,
+    seed: int | None = None,
 ) -> pd.DataFrame:
     """
-    Draw a stratified random sample that preserves class proportions in ``target``.
+    Perform stratified random sampling on ``df`` using ``stratify_by`` as the stratum key.
 
-    This function uses scikit-learn's ``train_test_split`` with the ``stratify`` flag
-    to select exactly ``target_size`` rows while maintaining (as closely as possible)
-    the original distribution of classes in ``df[target]``. Rows are returned shuffled
-    with a reset, consecutive index.
+    Exactly one of ``n_rows`` or ``frac`` must be provided. Internally, a single call to
+    ``sklearn.model_selection.train_test_split`` is used after computing a unified
+    ``train_size`` parameter. The result is shuffled and its index reset.
 
     Parameters
     ----------
     df : pandas.DataFrame
-        Input dataset that contains the target column.
-    target : str
-        Name of the (binary or multiclass) target column to stratify on.
-    target_size : int
-        Exact number of rows to select. Must satisfy ``1 ≤ target_size ≤ len(df)`` and
-        also ``target_size ≥ n_classes`` for stratification to be feasible.
-    seed : int
-        Random seed for reproducibility.
+        Input dataset that contains the stratification column.
+    stratify_by : str
+        Column name to use for stratification (binary or multiclass).
+    n_rows : int or None, optional
+        Absolute number of rows requested (mutually exclusive with ``frac``).
+        If ``n_rows >= len(df)``, a shuffled full copy is returned.
+    frac : float or None, optional
+        Fraction in ``(0, 1]`` of rows requested (mutually exclusive with ``n_rows``).
+        If ``frac == 1.0``, a shuffled full copy is returned.
+    seed : int or None, optional
+        Random seed forwarded to scikit-learn's ``random_state``.
 
     Returns
     -------
     pandas.DataFrame
-        Stratified sample of exact size ``target_size`` (or a shuffled full copy when
-        ``target_size >= len(df)``), with rows shuffled and index reset.
+        Stratified sample (rows shuffled, index reset).
 
     Raises
     ------
     ValueError
-        If ``target`` is missing, there are fewer than two classes, or
-        ``target_size < n_classes``.
+        If the stratification column is missing, there are fewer than two classes,
+        if both or neither of ``n_rows``/``frac`` are provided, if ``n_rows`` is not
+        positive, or if ``frac`` is not in ``(0, 1]``. Also raised if the requested
+        train size would contain fewer samples than the number of classes.
 
     Notes
     -----
-    - When ``target_size >= len(df)``, ``train_test_split`` would fail because the
-      complementary split would be empty; in that case we simply return a shuffled
-      copy of the full dataset.
-    - scikit-learn requires at least one instance per class in the stratified split;
-      hence the ``target_size ≥ n_classes`` guard.
+    - scikit-learn requires **at least one sample per class** in the train subset.
+    - When the requested size equals or exceeds ``len(df)``, a shuffled copy of the
+      full dataset is returned (no split).
 
     Examples
     --------
     >>> import pandas as pd
-    >>> from sklearn.datasets import make_classification
-    >>> X, y = make_classification(n_samples=1000, n_classes=2, random_state=0)
-    >>> df = pd.DataFrame(X).assign(Class=y)
-    >>> out = sample_stratified(df, target="Class", target_size=200, seed=42)
+    >>> df = pd.DataFrame({"x": range(100), "y": [0]*90 + [1]*10})
+    >>> out = stratified_random_sampling(df, stratify_by="y", n_rows=20, seed=42)
     >>> len(out)
-    200
+    20
+    >>> out = stratified_random_sampling(df, stratify_by="y", frac=0.2, seed=42)
+    >>> len(out)
+    20
     """
-    # Basic validations
-    if target not in df.columns:
-        raise ValueError(f"Target column '{target}' not found.")
+    if stratify_by not in df.columns:
+        raise ValueError(f"Stratification column '{stratify_by}' not found in DataFrame.")
 
-    y = df[target]
-    n_classes = y.nunique()
+    y = df[stratify_by]
+    n_classes = int(y.nunique())
     if n_classes < 2:
         raise ValueError("Stratified sampling requires at least two classes.")
 
-    # If the user asks for all rows, just return a shuffled copy
-    if target_size >= len(df):
-        return df.sample(frac=1.0, random_state=seed).reset_index(drop=True)
+    using_n = n_rows is not None
+    using_f = frac is not None
+    if using_n == using_f:
+        raise ValueError("Provide exactly one of 'n_rows' or 'frac' (not both or neither).")
 
-    # scikit-learn needs at least one sample per class in the stratified split
-    if target_size < n_classes:
+    n_total = len(df)
+
+    # Compute unified train_size parameter (int or float) and handle "all rows" early.
+    if using_n:
+        if n_rows is None or n_rows <= 0:
+            raise ValueError("n_rows must be a positive integer.")
+        if n_rows >= n_total:
+            return df.sample(frac=1.0, random_state=seed).reset_index(drop=True)
+        sample_size: int | float = n_rows
+        train_count = n_rows
+    else:
+        assert frac is not None  # type narrowing
+        if not (0.0 < frac <= 1.0):
+            raise ValueError("frac must be in the interval (0, 1].")
+        if frac == 1.0:
+            return df.sample(frac=1.0, random_state=seed).reset_index(drop=True)
+        sample_size = float(frac)
+        train_count = max(1, int(n_total * sample_size))  # ensure ≥ one per class
+
+    if train_count < n_classes:
         raise ValueError(
-            f"`target_size` ({target_size}) must be at least the number of classes ({n_classes}) "
-            "for stratified sampling."
+            f"Requested train size ({train_count}) is smaller than the number of classes "
+            f"({n_classes}); increase 'n_rows' or 'frac'."
         )
 
-    # Perform stratified sampling with an exact integer train_size
     sample_df, _ = train_test_split(
         df,
-        train_size=target_size,  # int is supported by scikit-learn
+        train_size=sample_size,  # int or float
         stratify=y,
         random_state=seed,
         shuffle=True,
@@ -297,171 +248,297 @@ def sample_stratified(
     return sample_df.reset_index(drop=True)
 
 
-def sample_keep_all_minority(
+def keep_all_minority_random_sampling(
     df: pd.DataFrame,
-    *,
     target: str,
-    target_size: int,
-    seed: int,
+    n_rows: int | None = None,
+    frac: float | None = None,
+    *,
+    ratio: int | None = None,
+    seed: int | None = None,
 ) -> pd.DataFrame:
     """
-    Build a sample that **keeps all minority-class rows** and fills the remainder
-    with randomly selected majority-class rows (without replacement) until
-    ``target_size`` is reached, then shuffles the result.
+    Keep **all** minority-class rows in ``target`` and add a random subset of majority rows
+    **without replacement** to form the final sample.
 
-    This is useful when the minority class is tiny, and you want to
-    guarantee its full presence in the working subset while constraining the
-    overall dataset size.
+    Exactly **one** of ``n_rows``, ``frac``, or ``ratio`` must be provided:
+
+    - **Size-driven** (``n_rows``): final size is ``min(n_rows, len(df))``. All minority rows are
+      included, and the remaining quota is filled by majority rows.
+    - **Fraction-driven** (``frac``): final size is ``int(len(df) * frac)`` (floored), clamped to
+      ``[1, len(df)]``. Minority is fully included; majority fills the remainder.
+    - **Ratio-driven** (``ratio``): include ``ratio`` majority rows **per** minority row, i.e.
+      majority count = ``min(ratio * n_minority, n_majority)``. Final size =
+      ``n_minority + majority_taken``.
 
     Parameters
     ----------
     df : pandas.DataFrame
-        Full input dataset.
+        Input dataset.
     target : str
-        Binary target column name. The function infers the minority class as the
-        label with the smallest count.
-    target_size : int
-        Desired final sample size. Must be **>=** the minority-class count; if larger
-        than the total available rows, the function caps at the maximum feasible size.
-    seed : int
-        Random seed for reproducibility.
+        Binary target column name. The **minority** class is inferred as the label with the
+        fewest rows.
+    n_rows : int or None, optional
+        Requested final sample size (absolute). Mutually exclusive with ``frac`` and ``ratio``.
+        Must be a positive integer. Values larger than ``len(df)`` are clamped.
+    frac : float or None, optional
+        Requested final sample size as a fraction of the dataset, strictly in ``(0, 1]``.
+        Mutually exclusive with ``n_rows`` and ``ratio``. Effective size is
+        ``int(len(df) * frac)``.
+    ratio : int or None, optional
+        Majority-per-minority ratio ``R`` (e.g., ``50`` → **1:50**). Mutually exclusive with
+        ``n_rows`` and ``frac``. Must be a non-negative integer.
+    seed : int or None, optional
+        Random seed for deterministic majority sampling and final shuffle.
 
     Returns
     -------
     pandas.DataFrame
-        A DataFrame of up to ``target_size`` rows containing **all** minority rows
-        plus enough majority rows to reach ``target_size`` (if available). Rows are
-        shuffled and the index is reset.
+        A DataFrame containing **all** minority rows plus a random subset of majority rows,
+        shuffled and with a zero-based, consecutive index.
 
     Raises
     ------
     ValueError
-        - If ``target`` is missing in ``df``.
-        - If ``target`` is not binary (i.e., number of distinct classes != 2).
-        - If ``target_size`` is smaller than the number of minority rows.
+        - If ``target`` is missing or not binary.
+        - If **none** or **more than one** of ``n_rows``, ``frac``, ``ratio`` is provided.
+        - If ``n_rows`` ≤ 0, or ``frac`` ∉ ``(0, 1]``, or ``ratio`` < 0.
+        - If the requested size (in size/fraction mode) is **smaller** than the minority count.
 
     Notes
     -----
-    - Majority rows are drawn **without replacement**.
-    - When ``target_size`` exceeds the total number of rows, the output will simply
-      contain **all** rows (shuffled).
-    - If you need *exact* class counts, consider using
-      ``imblearn.under_sampling.RandomUnderSampler``. This pure-pandas version
-      matches the intent and keeps dependencies minimal.
+    - Majority sampling is performed **without replacement**.
+    - When the majority quota exceeds availability, the function **caps** at the number of
+      available majority rows (no error).
+    - The final output is **fully shuffled** for neutrality and then index-reset.
 
     Examples
     --------
-    >>> import pandas as pd
-    >>> df = pd.DataFrame({"x": range(10), "Class": [0]*9 + [1]})
-    >>> out = sample_keep_all_minority(df, target="Class", target_size=6, seed=7)
-    >>> out["Class"].value_counts().to_dict()  # keeps the single '1' and adds 5 zeros
-    {0: 5, 1: 1}
+    Absolute size (80k rows total, keep-all-minority):
+    >>> out = keep_all_minority_random_sampling(df, target="Class", n_rows=80_000, seed=42)
+
+    Fractional size (10% of the dataset, keep-all-minority):
+    >>> out = keep_all_minority_random_sampling(df, target="Class", frac=0.10, seed=42)
+
+    Ratio mode (1:50 majority-to-minority):
+    >>> out = keep_all_minority_random_sampling(df, target="Class", ratio=50, seed=42)
     """
-    # Validate the target column is present
+    # Validate 'target' column and binary nature
     if target not in df.columns:
         raise ValueError(f"Target column '{target}' not found.")
 
-    # Count class frequencies and require a binary target
+    # value_counts() yields counts per label; require exactly two classes for binary targets
     counts = df[target].value_counts()
     if counts.size != 2:
-        raise ValueError(
-            f"'keep_all_minority' requires a binary target (found {counts.size} classes)."
-        )
+        raise ValueError("'keep_all_minority_random_sampling' requires a binary target.")
 
-    # Identify minority and majority labels by frequency
+    # Identify minority/majority labels by frequency
     minority_label = counts.idxmin()
     majority_label = counts.idxmax()
 
-    # Split the dataframe by class
+    # Partition the dataframe once (used by all modes)
     df_min = df[df[target] == minority_label]
     df_maj = df[df[target] == majority_label]
 
-    n_min = len(df_min)
-    n_maj = len(df_maj)
+    n_min = len(df_min)  # number of minority rows (must all be kept)
+    n_maj = len(df_maj)  # number of majority rows available
+    n_total = n_min + n_maj  # total rows in the dataset
 
-    # The requested size must be at least the number of minority rows
-    if target_size < n_min:
-        raise ValueError(
-            f"target_size ({target_size}) < minority_count ({n_min}); cannot keep all minority."
-        )
+    # Validate *exactly one* mode selector is provided
+    using_n = n_rows is not None
+    using_f = frac is not None
+    using_r = ratio is not None
+    if (using_n + using_f + using_r) != 1:
+        raise ValueError("Provide exactly one of 'n_rows', 'frac', or 'ratio'.")
 
-    # Compute how many majority rows we need; clamp to availability
-    majority_needed = target_size - n_min
-    majority_needed = min(majority_needed, n_maj)
+    # We'll compute two key quantities:
+    #   - 'majority_take': how many majority rows to sample
+    #   - 'sample_size' : the implied total size of the final sample
+    # Both depend on the chosen mode and must respect availability and invariants.
 
-    # Draw the requested number of majority rows (without replacement) and combine
-    if majority_needed > 0:
-        df_maj_sample = df_maj.sample(n=majority_needed, random_state=seed, replace=False)
+    # RATIO-DRIVEN MODE
+    if using_r:
+        # Validate the ratio
+        if ratio is None or ratio < 0:
+            raise ValueError("'ratio' must be a non-negative integer.")
+
+        # Compute how many majority rows are *needed* by the ratio,
+        # then cap it to the available majority rows.
+        majority_needed = ratio * n_min
+        majority_take = min(majority_needed, n_maj)
+
+        # Implied final size = all minority + taken majority
+        sample_size = n_min + majority_take
+
+    # SIZE-DRIVEN MODE (absolute 'n_rows')
+    elif using_n:
+        # Validate 'n_rows'
+        if n_rows is None or n_rows <= 0:
+            raise ValueError("n_rows must be a positive integer.")
+
+        # Clamp requested size to the dataset bounds
+        sample_size = min(n_rows, n_total)
+
+        # Invariant: we must be able to keep *all* minority rows
+        if sample_size < n_min:
+            raise ValueError(
+                f"Requested size ({sample_size}) is smaller than the minority count ({n_min}); "
+                "cannot keep all minority."
+            )
+
+        # Majority quota is whatever remains after placing all minority rows
+        majority_take = min(sample_size - n_min, n_maj)
+
+    # FRACTION-DRIVEN MODE ('frac')
+    else:
+        # Validate 'frac'
+        if not (0.0 < float(frac) <= 1.0):
+            raise ValueError("frac must be in the interval (0, 1].")
+
+        # Convert fraction to an integer size (floor), then clamp to [1, n_total]
+        sample_size = int(n_total * float(frac))
+        sample_size = min(max(sample_size, 1), n_total)
+
+        # Must still be able to include all minority rows
+        if sample_size < n_min:
+            raise ValueError(
+                f"Requested size via frac ({sample_size}) is smaller than the minority count ({n_min}); "
+                "increase 'frac'."
+            )
+
+        # Majority quota: remaining capacity after placing all minority rows
+        majority_take = min(sample_size - n_min, n_maj)
+
+    # Draw the majority sample (without replacement)
+    # If no majority rows are needed (e.g., ratio=0 or sample_size==n_min), we skip sampling.
+    if majority_take > 0:
+        df_maj_sample = df_maj.sample(n=majority_take, replace=False, random_state=seed)
+        # Concatenate all minority rows with the sampled majority rows
         out = pd.concat([df_min, df_maj_sample], axis=0)
     else:
-        # Corner case: requested size equals the minority count
+        # Corner case: final sample equals the minority set only
         out = df_min.copy()
 
-    # Final shuffle for neutrality and reset index for cleanliness
-    out = out.sample(frac=1.0, random_state=seed).reset_index(drop=True)
+    # Final shuffle and index reset for downstream neutrality
+    # Shuffling the *entire* sample (not just majority) prevents any ordering bias.
+    out = out.sample(frac=1.0, replace=False, random_state=seed).reset_index(drop=True)
+
     return out
 
 
 def apply_sampling(
     df: pd.DataFrame,
     *,
-    policy: Literal["random", "stratified", "keep_all_minority"],
-    target: str,
-    target_size: int,
-    seed: int,
+    policy: str,
+    target: str = "Class",
+    n_rows: int | None = None,
+    frac: float | None = None,
+    ratio: int | None = None,
+    seed: int | None = None,
 ) -> pd.DataFrame:
     """
-    Apply the selected sampling policy and return the sampled DataFrame.
+    Dispatch a sampling request to the selected strategy.
 
-    This dispatcher routes to one of the concrete sampling strategies:
-    ``sample_random`` (uniform, non-stratified), ``sample_stratified`` (preserve
-    class proportions in ``target``), or ``sample_keep_all_minority`` (keep all
-    minority rows and fill with majority up to ``target_size``).
+    This is a thin, case-insensitive router that forwards arguments to one of:
+    - ``random_sampling`` (uniform, without replacement)
+    - ``stratified_random_sampling`` (preserve class proportions of ``target``)
+    - ``keep_all_minority_random_sampling`` (include **all** minority rows, add majority)
+
+    Detailed validation (e.g., mutual exclusivity of ``n_rows``/``frac``/``ratio``,
+    target presence, binary checks) is handled by the concrete strategy functions.
 
     Parameters
     ----------
     df : pandas.DataFrame
-        Input dataset to be sampled.
-    policy : {'random', 'stratified', 'keep_all_minority'}
-        Sampling policy to apply.
-    target : str
-        Name of the target column (used by 'stratified' and 'keep_all_minority').
-        Kept for a uniform signature even when ``policy='random'``.
-    target_size : int
-        Exact number of rows requested for the sample. Assumed validated upstream
-        (e.g., via ``derive_target_size``).
-    seed : int
-        Random seed for reproducibility.
+        Input dataset to sample from.
+    policy : str
+        Sampling policy (case-insensitive). Accepted values:
+        ``'random'``, ``'stratified'``, ``'keep_all_minority'``.
+    target : str, default 'Class'
+        Target/stratification column. Used by ``'stratified'`` and
+        ``'keep_all_minority'``; ignored by ``'random'`` (kept for a uniform API).
+    n_rows : int or None, optional
+        Absolute requested sample size (delegated to the concrete function).
+        Mutually exclusive with ``frac`` for ``'random'`` and ``'stratified'``.
+        Mutually exclusive with both ``frac`` and ``ratio`` for ``'keep_all_minority'``.
+    frac : float or None, optional
+        Fractional requested sample size in ``(0, 1]`` (delegated).
+        Mutually exclusive with ``n_rows`` for ``'random'`` and ``'stratified'``.
+        Mutually exclusive with both ``n_rows`` and ``ratio`` for
+        ``'keep_all_minority'``.
+    ratio : int or None, optional
+        **Only for** ``'keep_all_minority'``. Majority-per-minority ratio
+        (e.g., ``50`` → **1:50**). Mutually exclusive with ``n_rows`` and ``frac``.
+    seed : int or None, optional
+        Random seed for reproducibility (forwarded to underlying functions).
 
     Returns
     -------
     pandas.DataFrame
-        Sampled DataFrame according to the chosen policy.
+        Sampled DataFrame with rows shuffled and index reset.
 
     Raises
     ------
     ValueError
-        If an unknown ``policy`` is provided.
+        If ``policy`` is unknown. (Other errors are raised by the underlying
+        strategy functions when inputs are invalid.)
 
     Notes
     -----
-    - For ``policy='random'``, class proportions are not preserved.
-    - For ``policy='stratified'``, scikit-learn's stratified split is used.
-    - For ``policy='keep_all_minority'``, all minority rows are included by design.
+    - All strategies sample **without replacement**.
+    - Use ``'stratified'`` if you need to preserve the class prior in the sample.
+    - Use ``'keep_all_minority'`` to guarantee all minority cases are present and
+      top up with majority rows via absolute size (``n_rows``), fraction (``frac``),
+      or ratio (``ratio`` majority per minority).
 
     Examples
     --------
-    >>> sample = apply_sampling(df, policy="random", target="Class", target_size=50000, seed=42)
-    >>> sample = apply_sampling(df, policy="stratified", target="Class", target_size=50000, seed=42)
-    >>> sample = apply_sampling(df, policy="keep_all_minority", target="Class", target_size=80000, seed=42)
+    Basic setup:
+    >>> import pandas as pd
+    >>> rng = pd.Series(range(1000))
+    >>> df = pd.DataFrame({
+    ...     "x": rng,
+    ...     "Class": [0]*950 + [1]*50,  # imbalanced binary target
+    ... })
+
+    1) Random sampling (absolute size):
+    >>> out = apply_sampling(df, policy="random", n_rows=200, seed=42)
+    >>> len(out)
+    200
+
+    2) Stratified sampling (fractional size, preserves class proportions):
+    >>> out = apply_sampling(df, policy="stratified", target="Class", frac=0.2, seed=42)
+    >>> len(out)
+    200
+    >>> out["Class"].value_counts(normalize=True).round(3).to_dict()  # roughly ~0.95 / ~0.05
+    {0: ... , 1: ...}
+
+    3) Keep-all-minority (absolute size):
+    >>> out = apply_sampling(df, policy="keep_all_minority", target="Class", n_rows=300, seed=42)
+    >>> out["Class"].value_counts().to_dict()  # includes all 50 minority rows
+    {0: ..., 1: 50}
+
+    4) Keep-all-minority (fractional size):
+    >>> out = apply_sampling(df, policy="keep_all_minority", target="Class", frac=0.3, seed=42)
+    >>> len(out)
+    300
+
+    5) Keep-all-minority (ratio mode, e.g., 1:10 majority per minority):
+    >>> out = apply_sampling(df, policy="keep_all_minority", target="Class", ratio=10, seed=42)
+    >>> out["Class"].value_counts().to_dict()  # ~ 50 minority + min(50*10, 950) majority
+    {0: ..., 1: 50}
     """
-    # Route to the concrete implementation based on the selected policy.
     if policy == "random":
-        return sample_random(df, n=target_size, seed=seed)
-    elif policy == "stratified":
-        return sample_stratified(df, target=target, target_size=target_size, seed=seed)
-    elif policy == "keep_all_minority":
-        return sample_keep_all_minority(df, target=target, target_size=target_size, seed=seed)
-    else:
-        # Defensive guard: enforce explicit failure on unsupported options.
-        raise ValueError(f"Unknown policy '{policy}'.")
+        return random_sampling(df, n_rows=n_rows, frac=frac, seed=seed)
+
+    if policy == "stratified":
+        return stratified_random_sampling(
+            df, stratify_by=target, n_rows=n_rows, frac=frac, seed=seed
+        )
+
+    if policy == "keep_all_minority":
+        return keep_all_minority_random_sampling(
+            df, target=target, n_rows=n_rows, frac=frac, ratio=ratio, seed=seed
+        )
+
+    raise ValueError(f"Unknown policy '{policy}'.")
