@@ -46,7 +46,7 @@ def ks_two_sample(
     >>> x = pd.Series([1, 2, 3, 4, 5])
     >>> y = pd.Series([1, 2, 2, 3, 4, 6])
     >>> out = ks_two_sample(x, y)
-    >>> out['p']  # doctest: +ELLIPSIS
+    >>> out['p']
     1.0
     """
     xv = np.asarray(x, dtype=float).ravel()
