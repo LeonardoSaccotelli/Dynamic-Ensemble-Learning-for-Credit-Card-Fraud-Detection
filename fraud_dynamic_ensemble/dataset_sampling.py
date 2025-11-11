@@ -8,12 +8,14 @@ import typer
 
 from fraud_dynamic_ensemble.config import (
     EXTERNAL_DATA_DIR,
+    EXTERNAL_FILENAME,
     FRAC,
     N_ROWS,
     POLICY,
     RANDOM_STATE,
     RATIO,
     RAW_DATA_DIR,
+    RAW_FILENAME,
 )
 from fraud_dynamic_ensemble.data_preparation.sampling import (
     apply_sampling,
@@ -25,8 +27,8 @@ app = typer.Typer()
 
 @app.command()
 def main(
-    input_path: Path = EXTERNAL_DATA_DIR / "creditcardfraud.csv",
-    output_path: Path = RAW_DATA_DIR / "credit_card_fraud_sampling.csv",
+    input_path: Path = EXTERNAL_DATA_DIR / EXTERNAL_FILENAME,
+    output_path: Path = RAW_DATA_DIR / RAW_FILENAME,
     target: str = "Class",
     policy: str = POLICY,
     n_rows: int | None = N_ROWS,
@@ -47,9 +49,9 @@ def main(
 
     Parameters
     ----------
-    input_path : pathlib.Path, default: EXTERNAL_DATA_DIR / "creditcardfraud.csv"
+    input_path : pathlib.Path, default: EXTERNAL_DATA_DIR / EXTERNAL_FILENAME
         Path to the **external** full dataset (CSV).
-    output_path : pathlib.Path, default: RAW_DATA_DIR / "credit_card_fraud_subsample.csv"
+    output_path : pathlib.Path, default: RAW_DATA_DIR / RAW_FILENAME
         Destination path for the **raw subsample** (CSV).
     target : str, default: "Class"
         Name of the target column.
@@ -81,6 +83,7 @@ def main(
     -----
     - I/O is **CSV-only** by design.
     """
+
     logger.info("Running fraud_dynamic_ensemble/dataset_sampling.py ...")
 
     # Preconditions
