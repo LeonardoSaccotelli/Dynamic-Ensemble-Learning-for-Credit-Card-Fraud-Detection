@@ -103,8 +103,7 @@ def main(
         raise typer.Exit(code=1)
 
     # Report BEFORE
-    rows, cols = df.shape
-    counts, perc = get_class_stats(df, target)
+    counts, perc, rows, cols = get_class_stats(df, target)
     logger.info(f"External shape: rows={rows}, cols={cols}")
     logger.info("Class distribution (before):")
     for cls in counts.index:
@@ -131,8 +130,7 @@ def main(
     logger.info(f"Sample prepared: rows={len(sample)}, cols={sample.shape[1]}")
 
     # Report AFTER
-    rows_after, cols_after = sample.shape
-    counts_after, perc_after = get_class_stats(sample, target)
+    counts_after, perc_after, rows_after, cols_after = get_class_stats(sample, target)
     logger.info(f"Shape (after): rows={rows_after}, cols={cols_after}")
     logger.info("Class distribution (after sampling):")
     for cls in counts_after.index:
