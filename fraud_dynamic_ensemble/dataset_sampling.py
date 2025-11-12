@@ -92,8 +92,6 @@ def main(
         logger.error("Run the downloader first, e.g.: `python fraud_dynamic_ensemble/dataset.py`.")
         raise typer.Exit(code=1)
 
-    RAW_DATA_DIR.mkdir(parents=True, exist_ok=True)
-
     # Load and basic checks
     logger.info(f"Loading EXTERNAL dataset at path:\n\t{input_path}")
     df = pd.read_csv(input_path, header=0, sep=",")
@@ -135,6 +133,9 @@ def main(
     logger.info("Class distribution (after sampling):")
     for cls in counts_after.index:
         logger.info(f"  class={cls}: count={counts_after[cls]}, perc={perc_after[cls]:.6f}")
+
+    # Ensure RAW_DATA_DIR exists
+    RAW_DATA_DIR.mkdir(parents=True, exist_ok=True)
 
     # Store the sampling dataset
     sample.to_csv(output_path, index=False, sep=",")
