@@ -1,17 +1,20 @@
 from __future__ import annotations
 
+from typing import Any
+
 import pandas as pd
+from pandas import Series
 from sklearn.model_selection import train_test_split
 
 
-def get_class_stats(df: pd.DataFrame, target: str) -> tuple[pd.Series, pd.Series]:
+def get_class_stats(df: pd.DataFrame, target: str) -> tuple[Series[Any], Series[Any], int, int]:
     """
-    Compute per-class counts and percentages for a target column.
+    Compute per-class counts, percentages, and dataframe shape.
 
     This utility aggregates the frequency of each class label found in ``df[target]``
-    and returns both the absolute counts and their percentages over the whole
-    dataframe. Although typically used for binary targets (e.g., fraud vs. non-fraud),
-    it also works for multi-class targets.
+    and returns both the absolute counts and their percentages, along with the
+    total number of rows and columns. Although typically used for binary targets
+    (e.g., fraud vs. non-fraud), it also works for multi-class targets.
 
     Parameters
     ----------
@@ -28,6 +31,10 @@ def get_class_stats(df: pd.DataFrame, target: str) -> tuple[pd.Series, pd.Series
     perc : pandas.Series
         Class percentages over all rows in ``df``. The index matches ``counts``,
         and values are rounded to 6 decimals.
+    n_rows : int
+        Total number of rows in ``df``.
+    n_cols : int
+        Total number of columns in ``df``.
 
     Raises
     ------
@@ -37,25 +44,32 @@ def get_class_stats(df: pd.DataFrame, target: str) -> tuple[pd.Series, pd.Series
     Notes
     -----
     - Sorting by index ensures a deterministic class order in logs/plots.
-    - When ``df`` is empty, both returned Series are empty.
+    - When ``df`` is empty, both returned Series are empty, and ``n_rows`` is 0.
 
     Examples
     --------
     >>> import pandas as pd
-    >>> df = pd.DataFrame({"Class": [0, 0, 1, 0, 1]})
-    >>> counts, perc = get_class_stats(df, "Class")
+    >>> df = pd.DataFrame({"Class": [0, 0, 1, 0, 1], "Other": [1,2,3,4,5]})
+    >>> counts, perc, rows, cols = get_class_stats(df, "Class")
     >>> counts.to_dict()
     {0: 3, 1: 2}
     >>> perc.to_dict()
     {0: 0.6, 1: 0.4}
+    >>> rows
+    5
+    >>> cols
+    2
     """
+    # Get dataframe dimensions
+    n_rows, n_cols = df.shape
+
     # Count occurrences per class label and sort by the label for deterministic order
     counts = df[target].value_counts().sort_index()
 
     # Convert absolute counts to percentages over the full dataframe size
     perc = (counts / len(df)).round(6)
 
-    return counts, perc
+    return counts, perc, n_rows, n_cols
 
 
 def random_sampling(
