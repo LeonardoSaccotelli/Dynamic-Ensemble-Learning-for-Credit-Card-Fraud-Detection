@@ -22,16 +22,22 @@ MODELS_DIR = PROJ_ROOT / "models"
 REPORTS_DIR = PROJ_ROOT / "reports"
 FIGURES_DIR = REPORTS_DIR / "figures"
 
+RAW_FILENAME = "credit_card_fraud_sampling.csv"
+INTERIM_FILENAME = "credit_card_fraud_cleaned.csv"
+PROCESSED_FILENAME = "credit_card_fraud_features.csv"
+EXTERNAL_FILENAME = "creditcardfraud.csv"
+
 # SEED FOR REPRODUCIBILITY
 RANDOM_STATE = 42
 
 # EXPERIMENT TRACKING
 RUN_ID = f"run_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
 
-# DATASET_SUBSAMPLE.PY PARAMETERS
+# DATASET_SAMPLING.PY PARAMETERS
 POLICY = "keep_all_minority"
-N_ROWS = 10000
+N_ROWS = None
 FRAC = None
+RATIO = 50
 
 # If tqdm is installed, configure loguru with tqdm.write
 # https://github.com/Delgan/loguru/issues/135
