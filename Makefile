@@ -74,7 +74,7 @@ format:
 dataset:
 	$(PYTHON_INTERPRETER) fraud_dynamic_ensemble/dataset.py
 
-## Make dataset subsampling (use 'make dataset_subsample' to sampling a subset of data for modeling)
+## Make dataset sampling (use 'make dataset_sampling' to sample a subset of data for modeling)
 .PHONY: dataset_sampling
 dataset_sampling:
 	$(PYTHON_INTERPRETER) fraud_dynamic_ensemble/dataset_sampling.py
