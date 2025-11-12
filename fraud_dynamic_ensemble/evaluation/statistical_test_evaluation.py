@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import Sequence, Dict
+from typing import Dict, Sequence
+
 import numpy as np
 from scipy import stats
 
