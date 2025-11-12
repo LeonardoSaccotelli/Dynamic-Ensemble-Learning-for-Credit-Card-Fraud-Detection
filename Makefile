@@ -79,6 +79,11 @@ dataset:
 dataset_sampling:
 	$(PYTHON_INTERPRETER) fraud_dynamic_ensemble/dataset_sampling.py
 
+## Make cleaning (use 'make cleaning' to generate a cleaned interim dataset)
+.PHONY: cleaning
+cleaning:
+	$(PYTHON_INTERPRETER) fraud_dynamic_ensemble/cleaning.py
+
 #################################################################################
 # Self Documenting Commands                                                     #
 #################################################################################
