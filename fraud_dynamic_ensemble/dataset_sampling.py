@@ -96,7 +96,7 @@ def main(
 
     # Load and basic checks
     logger.info(f"Loading EXTERNAL dataset at path:\n\t{input_path}")
-    df = pd.read_csv(input_path)
+    df = pd.read_csv(input_path, header=0, sep=",")
 
     if target not in df.columns:
         logger.error(f"Target column '{target}' not found. Available columns: {list(df.columns)}")
@@ -139,7 +139,7 @@ def main(
         logger.info(f"  class={cls}: count={counts_after[cls]}, perc={perc_after[cls]:.6f}")
 
     # Store the sampling dataset
-    sample.to_csv(output_path, index=False)
+    sample.to_csv(output_path, index=False, sep=",")
     logger.success(f"Wrote RAW subsampled dataset to path:\n\t{output_path}")
     logger.success("Completed fraud_dynamic_ensemble/dataset_sampling.py")
 
