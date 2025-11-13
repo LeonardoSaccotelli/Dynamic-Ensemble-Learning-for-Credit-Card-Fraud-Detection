@@ -103,7 +103,7 @@ def main(
     # Report BEFORE
     counts, perc, rows, cols = get_class_stats(df, target)
     logger.info(f"External shape: rows={rows}, cols={cols}")
-    logger.info("Class distribution (before):")
+    logger.info("Class distribution (before sampling):")
     for cls in counts.index:
         logger.info(f"  class={cls}: count={counts[cls]}, perc={perc[cls]:.6f}")
 
