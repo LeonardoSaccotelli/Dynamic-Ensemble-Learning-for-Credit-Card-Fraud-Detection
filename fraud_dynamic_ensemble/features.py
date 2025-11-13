@@ -30,19 +30,63 @@ def main(
     output_path: Path = PROCESSED_DATA_DIR / PROCESSED_FILENAME,
     target: str = "Class",
     period: int = DAY_SECONDS,
-):
+) -> None:
     """
-    Perform deterministic, leakage-safe feature engineering.
+    Deterministic, leakage-safe feature engineering for the fraud dataset.
 
-    This function computes a log-transformed version of the 'Amount' column and
-    removes 'Amount' and 'Time' to prevent data leakage.
+    This CLI entrypoint loads the **cleaned** dataset, applies purely row-wise
+    transformations, and writes a processed CSV:
+
+    1) Add ``Amount_log1p`` via ``np.log1p(Amount)`` and drop ``Amount``.
+    2) Add ``Time_sin`` and ``Time_cos`` using the given ``period`` and drop ``Time``.
+    3) Move the target column to the last position for convenience.
+    4) Persist the result to ``output_path``.
+
+    All transforms are element-wise (no data-wide statistics), so they do **not**
+    introduce data leakage. Any scaling/standardization should be handled later
+    inside the modeling pipeline.
 
     Parameters
     ----------
-    input_path : Path
-        Path to the cleaned dataset.
-    output_path : Path
-        Path to save the processed dataset with engineered features.
+    input_path : pathlib.Path, default: ``INTERIM_DATA_DIR / INTERIM_FILENAME``
+        Path to the cleaned (interim) dataset CSV.
+    output_path : pathlib.Path, default: ``PROCESSED_DATA_DIR / PROCESSED_FILENAME``
+        Destination path for the processed dataset CSV with engineered features.
+    target : str, default: ``"Class"``
+        Name of the target column; logged before/after transformations and moved last.
+    period : int, default: ``DAY_SECONDS``
+        Period used to encode ``Time`` into ``Time_sin``/``Time_cos``. Must match the
+        unit of ``Time`` (e.g., seconds-in-day = 86,400).
+
+    Returns
+    -------
+    None
+        Side-effecting function: logging and file I/O.
+
+    Raises
+    ------
+    typer.Exit
+        If ``input_path`` does not exist.
+    KeyError
+        If required columns (e.g., ``"Amount"``, ``"Time"``, or ``target``) are missing.
+    ValueError
+        Propagated from row-wise transformers (e.g., invalid ``period`` or
+        ``Amount < -1`` for ``log1p``).
+    pandas.errors.EmptyDataError
+        If the input CSV is empty.
+    pandas.errors.ParserError
+        If the CSV cannot be parsed.
+    PermissionError
+        If the output CSV cannot be written due to insufficient permissions.
+    OSError
+        For OS-related errors during directory creation or file writing.
+
+    Notes
+    -----
+    - Row-wise transforms only → **no leakage**.
+    - ``Amount_log1p`` uses ``np.log1p`` (defined for ``x >= -1``).
+    - ``Time_sin``/``Time_cos`` are computed as ``sin(2π⋅x/period)`` and ``cos(2π⋅x/period)``.
+    - The function ensures ``PROCESSED_DATA_DIR`` exists before saving.
     """
 
     logger.info("Running fraud_dynamic_ensemble/features.py ...")
