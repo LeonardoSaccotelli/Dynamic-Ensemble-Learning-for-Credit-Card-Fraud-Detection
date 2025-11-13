@@ -82,7 +82,7 @@ def main(
     # Report BEFORE cleaning phase
     counts, perc, rows, cols = get_class_stats(df, target)
     logger.info(f"Raw shape: rows={rows}, cols={cols}")
-    logger.info("Class distribution (before):")
+    logger.info("Class distribution (before cleaning):")
     for cls in counts.index:
         logger.info(f"  class={cls}: count={counts[cls]}, perc={perc[cls]:.6f}")
 
@@ -99,7 +99,7 @@ def main(
     )
 
     logger.info(f"Raw shape: rows={rows_after}, cols={cols}")
-    logger.info("Class distribution (after):")
+    logger.info("Class distribution (after cleaning):")
     for cls in counts_after.index:
         logger.info(f"  class={cls}: count={counts_after[cls]}, perc={perc_after[cls]:.6f}")
 
