@@ -12,6 +12,7 @@ from fraud_dynamic_ensemble.config import (
     RAW_DATA_DIR,
     RAW_FILENAME,
 )
+from fraud_dynamic_ensemble.data_preparation.data_clean import remove_duplicates
 from fraud_dynamic_ensemble.data_preparation.sampling import get_class_stats
 
 app = typer.Typer()
@@ -88,7 +89,7 @@ def main(
 
     # --- DUPLICATED ---
     # Remove duplicated rows
-    df.drop_duplicates(ignore_index=True, inplace=True)
+    df = remove_duplicates(df, subset=None, keep="first", inplace=False, ignore_index=True)
 
     # Report AFTER removing duplicates
     counts_after, perc_after, rows_after, cols = get_class_stats(df, target)
