@@ -78,7 +78,12 @@ def transform_log1p(
     return df_transformed
 
 
-def transform_sin_cos(df, cols, period, drop_original=True):
+def transform_sin_cos(
+    df: pd.DataFrame,
+    cols: str | list[str],
+    period: int | float,
+    drop_original: bool = True,
+) -> pd.DataFrame:
     """
     Encode cyclical features with sine and cosine components.
 
@@ -109,59 +114,57 @@ def transform_sin_cos(df, cols, period, drop_original=True):
     ------
     KeyError
         If any requested column is not present in ``df``.
-    TypeError
-        If the column data cannot be coerced to a numeric dtype acceptable by
-        ``numpy`` trigonometric functions.
     ValueError
-        If ``period`` is not positive or assignment fails due to shape issues.
+        If ``period`` is not strictly positive.
+    TypeError
+        Propagated if column data cannot be coerced to numeric for the trig functions.
 
     Notes
     -----
-    - Purely row-wise (no fit/learned stats) → **no leakage**.
-    - Ensure ``period`` strictly matches the unit of the input feature (e.g.,
-      seconds vs hours). If your feature has an offset (e.g., starts at 1), apply
-      the offset upstream before calling this function.
-    - Internally, each transformer receives a 2D view (``df[[col]]``) and returns
-      a 2D array which is assigned to a single new column.
+    - Purely row-wise transform (no learned statistics) → **no leakage**.
+    - Ensure ``period`` matches the unit of the source feature (e.g., seconds vs hours).
+    - Internally, a 2D view (``df[[col]]``) is passed to scikit-learn's
+      ``FunctionTransformer`` and assigned back to a single new column.
 
     Examples
     --------
-    Seconds in day (keep original):
+    Keep original ``Time`` (seconds in day):
     >>> out = transform_sin_cos(df, "Time", period=86400, drop_original=False)
-    >>> set(out.columns) >= {"Time", "Time_sin", "Time_cos"}
+    >>> {"Time", "Time_sin", "Time_cos"}.issubset(out.columns)
     True
 
-    Multiple columns (drop originals):
+    Multiple columns, drop originals:
     >>> out = transform_sin_cos(df, ["t1", "t2"], period=24)
-    >>> set(out.columns) >= {"t1_sin", "t1_cos", "t2_sin", "t2_cos"}
+    >>> {"t1_sin", "t1_cos", "t2_sin", "t2_cos"}.issubset(out.columns)
     True
     """
+    if period <= 0:
+        raise ValueError("'period' must be a strictly positive number.")
 
-    def sin_transformer(period):
-        return FunctionTransformer(lambda x: np.sin(x / period * 2 * np.pi))
+    def _sin_transformer(p: float | int) -> FunctionTransformer:
+        return FunctionTransformer(lambda x: np.sin(x / p * 2 * np.pi))
 
-    def cos_transformer(period):
-        return FunctionTransformer(lambda x: np.cos(x / period * 2 * np.pi))
+    def _cos_transformer(p: float | int) -> FunctionTransformer:
+        return FunctionTransformer(lambda x: np.cos(x / p * 2 * np.pi))
 
-    # Create a copy to avoid SettingWithCopy warnings
     df_transformed = df.copy()
 
-    # Ensure cols is a list even if a single string is passed
-    if isinstance(cols, str):
-        cols = [cols]
+    cols_list: list[str] = [cols] if isinstance(cols, str) else list(cols)
+    missing = [c for c in cols_list if c not in df_transformed.columns]
+    if missing:
+        raise KeyError(f"Columns not found in DataFrame: {missing}")
 
-    for col in cols:
-        # Define new column names automatically (e.g. "hour_sin", "hour_cos")
+    sin_tf = _sin_transformer(period)
+    cos_tf = _cos_transformer(period)
+
+    for col in cols_list:
         sin_col_name = f"{col}_sin"
         cos_col_name = f"{col}_cos"
+        # Pass as 2D for sklearn; assignment back to a 1D column is handled by pandas.
+        df_transformed[sin_col_name] = sin_tf.fit_transform(df_transformed[[col]])
+        df_transformed[cos_col_name] = cos_tf.fit_transform(df_transformed[[col]])
 
-        # Apply transformations exactly as requested
-        # Note: We use double brackets [[col]] to ensure 2D input for fit_transform
-        df_transformed[sin_col_name] = sin_transformer(period).fit_transform(df_transformed[[col]])
-        df_transformed[cos_col_name] = cos_transformer(period).fit_transform(df_transformed[[col]])
-
-    # Drop original columns if requested
     if drop_original:
-        df_transformed.drop(columns=cols, inplace=True)
+        df_transformed.drop(columns=cols_list, inplace=True)
 
     return df_transformed
