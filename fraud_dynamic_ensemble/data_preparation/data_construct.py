@@ -1,21 +1,25 @@
 from __future__ import annotations
 
 import numpy as np
+import pandas as pd
 from sklearn.preprocessing import FunctionTransformer
 
 
-def transform_log1p(df, cols, drop_original=True):
+def transform_log1p(
+    df: pd.DataFrame,
+    cols: str | list[str],
+    drop_original: bool = True,
+) -> pd.DataFrame:
     """
     Apply a row-wise ``log1p`` transform (``log(x + 1)``) to one or more columns.
 
-    This helper wraps a scikit-learn ``FunctionTransformer`` (with ``np.log1p``) and
-    writes results to new columns named ``<col>_log1p``. By default the original
-    columns are dropped to keep the final schema compact.
+    This helper uses a scikit-learn ``FunctionTransformer`` (``np.log1p``) and writes
+    results to new columns named ``<col>_log1p``. Optionally drops the original columns.
 
     Parameters
     ----------
     df : pandas.DataFrame
-        Input DataFrame. A defensive copy is created; the original is not modified.
+        Input DataFrame. A copy is returned; the original is not modified.
     cols : str or list of str
         Column name(s) to transform.
     drop_original : bool, default True
@@ -24,60 +28,52 @@ def transform_log1p(df, cols, drop_original=True):
     Returns
     -------
     pandas.DataFrame
-        A copy of ``df`` with the transformed columns appended (and optionally with
-        the source columns removed).
+        Copy of ``df`` with transformed columns appended (and optionally source
+        columns removed).
 
     Raises
     ------
     KeyError
         If any requested column is not present in ``df``.
-    TypeError
-        If the column data cannot be coerced to a numeric dtype acceptable by
-        ``numpy.log1p``.
     ValueError
-        If downstream assignment fails due to incompatible shapes/dtypes.
+        If any selected column contains values strictly less than ``-1``
+        (invalid for ``log1p``).
 
     Notes
     -----
-    - This is a purely row-wise transform (no learned statistics) → **no leakage**.
-    - ``np.log1p`` is defined for ``x >= -1``; values ``< -1`` will yield ``NaN`` and
-      may trigger a runtime warning. Validate or clip upstream if necessary.
-    - Internally, a 2D view of each column (``df[[col]]``) is passed to the
-      transformer; the result is assigned back to a single new column.
+    - Purely row-wise transform → **no data leakage**.
+    - If a column has non-numeric data, underlying casting/transform will error.
+    - ``np.log1p`` is defined for ``x >= -1``.
 
     Examples
     --------
-    Single column (drop original):
     >>> out = transform_log1p(df, "Amount")
-
-    Multiple columns, keep originals:
     >>> out = transform_log1p(df, ["A", "B"], drop_original=False)
-    >>> set(out.columns) >= {"A", "B", "A_log1p", "B_log1p"}
-    True
     """
 
-    def log1p_transformer():
-        # np.log1p is applied element-wise, so it's directly compatible
+    def _log1p_transformer() -> FunctionTransformer:
         return FunctionTransformer(np.log1p)
 
-    # Create a copy to avoid SettingWithCopy warnings
     df_transformed = df.copy()
 
-    # Ensure cols is a list even if a single string is passed
-    if isinstance(cols, str):
-        cols = [cols]
+    # Normalize cols and check presence
+    cols_list: list[str] = [cols] if isinstance(cols, str) else list(cols)
+    missing = [c for c in cols_list if c not in df_transformed.columns]
+    if missing:
+        raise KeyError(f"Columns not found in DataFrame: {missing}")
 
-    for col in cols:
-        # Define the new column name (e.g., "Amount_log")
-        new_col_name = f"{col}_log1p"
+    # Domain check and transform
+    transformer = _log1p_transformer()
+    for col in cols_list:
+        arr = df_transformed[col].astype(float).to_numpy()
+        finite = np.isfinite(arr)
+        if finite.any() and np.nanmin(arr[finite]) < -1.0:
+            raise ValueError(f"Column '{col}' contains values < -1; invalid for log1p.")
+        new_col = f"{col}_log1p"
+        df_transformed[new_col] = transformer.fit_transform(df_transformed[[col]])
 
-        # Apply the transformation
-        # We use double brackets [[col]] to ensure 2D input for fit_transform
-        df_transformed[new_col_name] = log1p_transformer().fit_transform(df_transformed[[col]])
-
-    # Drop original columns if requested
     if drop_original:
-        df_transformed.drop(columns=cols, inplace=True)
+        df_transformed.drop(columns=cols_list, inplace=True)
 
     return df_transformed
 
