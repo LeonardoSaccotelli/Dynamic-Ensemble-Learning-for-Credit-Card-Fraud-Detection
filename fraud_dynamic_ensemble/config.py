@@ -39,6 +39,9 @@ N_ROWS = None
 FRAC = None
 RATIO = 50
 
+# FEATURES.PY PARAMETERS
+DAY_SECONDS = 86_400.0  # 24 * 60 * 60
+
 # If tqdm is installed, configure loguru with tqdm.write
 # https://github.com/Delgan/loguru/issues/135
 try:
