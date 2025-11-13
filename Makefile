@@ -84,6 +84,11 @@ dataset_sampling:
 cleaning:
 	$(PYTHON_INTERPRETER) fraud_dynamic_ensemble/cleaning.py
 
+## Make features (use 'make features' to generate the final processed dataset for modeling)
+.PHONY: features
+features:
+	$(PYTHON_INTERPRETER) fraud_dynamic_ensemble/features.py
+
 #################################################################################
 # Self Documenting Commands                                                     #
 #################################################################################
