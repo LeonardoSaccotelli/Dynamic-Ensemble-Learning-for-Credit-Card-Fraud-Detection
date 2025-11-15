@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+from typing import Literal, Sequence, Union
+
 import numpy as np
 import pandas as pd
-from sklearn.preprocessing import FunctionTransformer
+from sklearn.compose import ColumnTransformer
+from sklearn.preprocessing import FunctionTransformer, StandardScaler
 
 
 def transform_log1p(
@@ -168,3 +171,72 @@ def transform_sin_cos(
         df_transformed.drop(columns=cols_list, inplace=True)
 
     return df_transformed
+
+
+def get_standard_scaler(
+    columns: Union[Sequence[int], Sequence[str]],
+    *,
+    remainder: Literal["passthrough", "drop"] = "passthrough",
+    with_mean: bool = True,
+    with_std: bool = True,
+) -> ColumnTransformer:
+    """
+    Create a ColumnTransformer that applies StandardScaler to selected columns.
+
+    This is useful when you want to scale only a subset of features—especially
+    **by positional index** after steps like FeatureUnion, where column names
+    may be lost and the data is a NumPy array.
+
+    Parameters
+    ----------
+    columns : sequence of int or str
+        Columns to scale. Use **indices** when the input to the transformer is
+        a NumPy array; use **names** when it is a pandas DataFrame.
+    remainder : {"passthrough", "drop"}, default "passthrough"
+        What to do with columns not listed in ``columns``:
+        - "passthrough": keep them unchanged,
+        - "drop": remove them.
+    with_mean : bool, default True
+        Center the data before scaling (StandardScaler parameter).
+        Set to False if using sparse inputs.
+    with_std : bool, default True
+        Scale to unit variance (StandardScaler parameter).
+
+    Returns
+    -------
+    sklearn.compose.ColumnTransformer
+        A transformer that applies standardization to the specified columns and
+        passes/drops the remainder according to ``remainder``.
+
+    Notes
+    -----
+    - When your upstream pipeline returns a NumPy array (e.g., after feature
+      selection or unions), prefer **index-based** selection.
+    - If you later switch to chi-square tests, remember that ``chi2`` requires
+      **non-negative** features, so StandardScaler would be inappropriate there.
+
+    Examples
+    --------
+    Scale columns by **index** (NumPy input):
+    >>> ct = get_standard_scaler(columns=[0, 1, 3], remainder="passthrough")
+
+    Scale columns by **name** (DataFrame input):
+    >>> ct = get_standard_scaler(columns=["Amount_log1p", "V1"], remainder="passthrough")
+
+    Use inside a Pipeline:
+    >>> from sklearn.pipeline import Pipeline
+    >>> pipe = Pipeline([
+    ...     ("scale_selected", ct),
+    ...     # ("select", get_feature_selection(...)),  # optional
+    ...     # ("clf", SomeEstimator(...)),
+    ... ])
+    """
+    if not columns:
+        raise ValueError("`columns` must be a non-empty sequence of indices or names.")
+
+    scaler = StandardScaler(with_mean=with_mean, with_std=with_std)
+    preprocessor = ColumnTransformer(
+        transformers=[("scaler", scaler, list(columns))],
+        remainder=remainder,
+    )
+    return preprocessor
