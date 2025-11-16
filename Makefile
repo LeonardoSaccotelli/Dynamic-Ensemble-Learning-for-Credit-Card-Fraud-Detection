@@ -89,6 +89,11 @@ cleaning:
 features:
 	$(PYTHON_INTERPRETER) fraud_dynamic_ensemble/features.py
 
+## Make train (use 'make train' to run the training process)
+.PHONY: train
+train:
+	$(PYTHON_INTERPRETER) fraud_dynamic_ensemble/modeling/train.py
+
 #################################################################################
 # Self Documenting Commands                                                     #
 #################################################################################
