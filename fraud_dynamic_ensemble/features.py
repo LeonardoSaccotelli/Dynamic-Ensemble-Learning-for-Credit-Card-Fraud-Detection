@@ -137,7 +137,7 @@ def main(
     df.to_csv(output_path, index=False, sep=",")
     logger.success(f"Wrote features dataset to path:\n\t{output_path}")
 
-    logger.success("Completed fraud_dynamic_ensemble/features.py")
+    logger.success("Running fraud_dynamic_ensemble/features.py COMPLETED!")
 
 
 if __name__ == "__main__":

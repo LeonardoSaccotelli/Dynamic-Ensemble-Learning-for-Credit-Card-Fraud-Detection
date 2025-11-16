@@ -110,6 +110,7 @@ def main(
     # Store the cleaned dataset
     df.to_csv(output_path, index=False, sep=",")
     logger.success(f"Wrote cleaned dataset to path:\n\t{output_path}")
+
     logger.success("Running fraud_dynamic_ensemble/cleaning.py COMPLETED!")
 
 

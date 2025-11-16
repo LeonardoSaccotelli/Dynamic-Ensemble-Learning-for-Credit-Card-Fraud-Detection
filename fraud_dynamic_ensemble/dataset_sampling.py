@@ -140,7 +140,8 @@ def main(
     # Store the sampling dataset
     sample.to_csv(output_path, index=False, sep=",")
     logger.success(f"Wrote RAW subsampled dataset to path:\n\t{output_path}")
-    logger.success("Completed fraud_dynamic_ensemble/dataset_sampling.py")
+
+    logger.success("Running fraud_dynamic_ensemble/dataset_sampling.py COMPLETED!")
 
 
 if __name__ == "__main__":
