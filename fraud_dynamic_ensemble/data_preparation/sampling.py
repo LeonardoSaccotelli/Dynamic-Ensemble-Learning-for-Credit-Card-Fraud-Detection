@@ -1,7 +1,32 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Dict, Optional, Type
 
+from imblearn.combine import SMOTEENN, SMOTETomek
+from imblearn.over_sampling import (
+    ADASYN,
+    SMOTE,
+    SMOTEN,
+    SMOTENC,
+    SVMSMOTE,
+    BorderlineSMOTE,
+    KMeansSMOTE,
+    RandomOverSampler,
+)
+from imblearn.pipeline import Pipeline as ImbPipeline
+from imblearn.under_sampling import (
+    AllKNN,
+    ClusterCentroids,
+    CondensedNearestNeighbour,
+    EditedNearestNeighbours,
+    InstanceHardnessThreshold,
+    NearMiss,
+    NeighbourhoodCleaningRule,
+    OneSidedSelection,
+    RandomUnderSampler,
+    RepeatedEditedNearestNeighbours,
+    TomekLinks,
+)
 import pandas as pd
 from pandas import Series
 from sklearn.model_selection import train_test_split
@@ -556,3 +581,108 @@ def apply_sampling(
         )
 
     raise ValueError(f"Unknown policy '{policy}'.")
+
+
+def get_resampling_pipeline(
+    strategy_name: Optional[str],
+    **kwargs: Any,
+) -> ImbPipeline:
+    """
+    Return a one-step imbalanced-learn pipeline for a chosen resampling strategy.
+
+    Accepted canonical names (case-insensitive):
+      Undersampling:
+        - 'RandomUnderSampler', 'NearMiss', 'TomekLinks', 'EditedNearestNeighbours',
+          'RepeatedEditedNearestNeighbours', 'AllKNN', 'CondensedNearestNeighbour',
+          'OneSidedSelection', 'NeighbourhoodCleaningRule', 'InstanceHardnessThreshold',
+          'ClusterCentroids'
+      Oversampling:
+        - 'RandomOverSampler', 'SMOTE', 'SMOTENC', 'SMOTEN', 'ADASYN',
+          'BorderlineSMOTE', 'KMeansSMOTE', 'SVMSMOTE'
+      Hybrid:
+        - 'SMOTEENN', 'SMOTETomek'
+      Passthrough:
+        - 'none' (or None)
+
+    Parameters
+    ----------
+    strategy_name : str or None
+        Canonical sampler class name (e.g., 'SMOTE', 'RandomUnderSampler'), case-insensitive.
+        If None or 'none', returns a passthrough step.
+    **kwargs : dict
+        Arguments forwarded directly to the sampler constructor.
+        Examples:
+          - sampling_strategy=0.01
+          - random_state=42
+          - k_neighbors=5 (SMOTE/ADASYN/SVMSMOTE)
+          - version=1/2/3 (NearMiss)
+          - smote=SMOTE(...), enn=EditedNearestNeighbours(...) (for SMOTEENN)
+          - smote=SMOTE(...), tomek=TomekLinks(...) (for SMOTETomek)
+
+    Returns
+    -------
+    imblearn.pipeline.Pipeline
+        A single-step pipeline: [('resample', <sampler or 'passthrough'>)].
+
+    Raises
+    ------
+    ValueError
+        If `strategy_name` is not one of the supported names.
+
+    Examples
+    --------
+    >>> get_resampling_pipeline("SMOTE", sampling_strategy="auto", k_neighbors=5, random_state=42)
+    Pipeline(steps=[('resample', SMOTE(k_neighbors=5, random_state=42))])
+
+    >>> get_resampling_pipeline("RandomUnderSampler", sampling_strategy=0.01, random_state=42)
+    Pipeline(steps=[('resample',
+                     RandomUnderSampler(random_state=42, sampling_strategy=0.01))])
+
+    >>> get_resampling_pipeline(
+    ...     "SMOTEENN",
+    ...     smote=SMOTE(random_state=42, k_neighbors=5),
+    ...     enn=EditedNearestNeighbours(n_neighbors=3),
+    ... )
+    Pipeline(steps=[('resample',
+                     SMOTEENN(enn=EditedNearestNeighbours(n_neighbors=3),
+                              smote=SMOTE(k_neighbors=5, random_state=42)))])
+    """
+    name = "none" if strategy_name is None else strategy_name.strip().lower()
+
+    registry: Dict[str, Type] = {
+        # Undersampling
+        "randomundersampler": RandomUnderSampler,
+        "nearmiss": NearMiss,  # use kwargs 'version' = 1|2|3
+        "tomeklinks": TomekLinks,
+        "editednearestneighbours": EditedNearestNeighbours,
+        "repeatededitednearestneighbours": RepeatedEditedNearestNeighbours,
+        "allknn": AllKNN,
+        "condensednearestneighbour": CondensedNearestNeighbour,
+        "onesidedselection": OneSidedSelection,
+        "neighbourhoodcleaningrule": NeighbourhoodCleaningRule,
+        "instancehardnessthreshold": InstanceHardnessThreshold,
+        "clustercentroids": ClusterCentroids,
+        # Oversampling
+        "randomoversampler": RandomOverSampler,
+        "smote": SMOTE,
+        "smotenc": SMOTENC,
+        "smoten": SMOTEN,
+        "adasyn": ADASYN,
+        "borderlinesmote": BorderlineSMOTE,
+        "kmeanssmote": KMeansSMOTE,
+        "svmsmote": SVMSMOTE,
+        # Hybrid
+        "smoteenn": SMOTEENN,
+        "smotetomek": SMOTETomek,
+    }
+
+    if name in {"none", "passthrough"}:
+        return ImbPipeline([("resample", "passthrough")])
+
+    if name not in registry:
+        supported = ", ".join(sorted(registry.keys()))
+        raise ValueError(f"Unknown resampler '{strategy_name}'. Supported: {supported}")
+
+    sampler_cls = registry[name]
+    sampler = sampler_cls(**kwargs)
+    return ImbPipeline([("resample", sampler)])
