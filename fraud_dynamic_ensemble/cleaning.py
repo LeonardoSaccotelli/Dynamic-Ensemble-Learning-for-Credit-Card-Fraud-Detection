@@ -87,7 +87,7 @@ def main(
     for cls in counts.index:
         logger.info(f"  class={cls}: count={counts[cls]}, perc={perc[cls]:.6f}")
 
-    # --- DUPLICATED ---
+    ################################# DUPLICATED #################################
     # Remove duplicated rows
     df = remove_duplicates(df, subset=None, keep="first", inplace=False, ignore_index=True)
 
