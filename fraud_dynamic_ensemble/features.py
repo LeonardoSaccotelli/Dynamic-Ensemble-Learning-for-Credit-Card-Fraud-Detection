@@ -112,15 +112,18 @@ def main(
 
     logger.info("Starting feature engineering...")
 
-    # --- Transform Amount using log_1p function ---
+    ################################# TRANSFORM AMOUNT #################################
+    # Transform Amount using log_1p function
     logger.info("Computing log1p of 'Amount'...")
     df = transform_log1p(df, cols="Amount", drop_original=True)
 
-    # --- Transform Time using trigonometric features (sin-cos) ---
+    ################################# TRANSFORM TIME #################################
+    # Transform Time using trigonometric features (sin-cos)
     logger.info("Computing sin,cos of 'Time'...")
     df = transform_sin_cos(df, "Time", period=period, drop_original=True)
 
-    # --- Move the Class column as last column
+    ################################# SORT COLUMNS #################################
+    # Move the Class column as last column
     df = df[[col for col in df.columns if col not in [target]] + [target]]
 
     # Report AFTER feature engineering phase
