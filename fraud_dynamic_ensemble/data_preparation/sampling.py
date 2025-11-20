@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from typing import Any, Dict, Optional, Type
+from typing import Any, Dict, Optional, Type, Union
 
+from imblearn.base import BaseSampler
 from imblearn.combine import SMOTEENN, SMOTETomek
 from imblearn.over_sampling import (
     ADASYN,
@@ -13,7 +14,6 @@ from imblearn.over_sampling import (
     KMeansSMOTE,
     RandomOverSampler,
 )
-from imblearn.pipeline import Pipeline as ImbPipeline
 from imblearn.under_sampling import (
     AllKNN,
     ClusterCentroids,
@@ -586,73 +586,63 @@ def apply_sampling(
 def get_resampling_pipeline(
     strategy_name: Optional[str],
     **kwargs: Any,
-) -> ImbPipeline:
+) -> Union[BaseSampler, str]:
     """
-    Return a one-step imbalanced-learn pipeline for a chosen resampling strategy.
+    Return an **imblearn sampler instance** for the chosen resampling strategy
+    (not a Pipeline). Use this directly inside your pipeline as a step.
 
-    Accepted canonical names (case-insensitive):
-      Undersampling:
-        - 'RandomUnderSampler', 'NearMiss', 'TomekLinks', 'EditedNearestNeighbours',
-          'RepeatedEditedNearestNeighbours', 'AllKNN', 'CondensedNearestNeighbour',
-          'OneSidedSelection', 'NeighbourhoodCleaningRule', 'InstanceHardnessThreshold',
-          'ClusterCentroids'
-      Oversampling:
-        - 'RandomOverSampler', 'SMOTE', 'SMOTENC', 'SMOTEN', 'ADASYN',
-          'BorderlineSMOTE', 'KMeansSMOTE', 'SVMSMOTE'
-      Hybrid:
-        - 'SMOTEENN', 'SMOTETomek'
-      Passthrough:
-        - 'none' (or None)
+    Accepted canonical names (case-insensitive)
+    ------------------------------------------------
+    Undersampling:
+      'RandomUnderSampler', 'NearMiss', 'TomekLinks', 'EditedNearestNeighbours',
+      'RepeatedEditedNearestNeighbours', 'AllKNN', 'CondensedNearestNeighbour',
+      'OneSidedSelection', 'NeighbourhoodCleaningRule', 'InstanceHardnessThreshold',
+      'ClusterCentroids'
+    Oversampling:
+      'RandomOverSampler', 'SMOTE', 'SMOTENC', 'SMOTEN', 'ADASYN',
+      'BorderlineSMOTE', 'KMeansSMOTE', 'SVMSMOTE'
+    Hybrid:
+      'SMOTEENN', 'SMOTETomek'
+    Passthrough:
+      'none' (or ``None``) → returns the string ``'passthrough'``
 
     Parameters
     ----------
     strategy_name : str or None
-        Canonical sampler class name (e.g., 'SMOTE', 'RandomUnderSampler'), case-insensitive.
-        If None or 'none', returns a passthrough step.
+        Canonical sampler class name, case-insensitive (e.g., 'SMOTE').
+        If None or 'none', returns 'passthrough'.
     **kwargs : dict
-        Arguments forwarded directly to the sampler constructor.
+        Arguments forwarded to the sampler constructor.
         Examples:
-          - sampling_strategy=0.01
-          - random_state=42
-          - k_neighbors=5 (SMOTE/ADASYN/SVMSMOTE)
-          - version=1/2/3 (NearMiss)
-          - smote=SMOTE(...), enn=EditedNearestNeighbours(...) (for SMOTEENN)
-          - smote=SMOTE(...), tomek=TomekLinks(...) (for SMOTETomek)
+          sampling_strategy=0.01, random_state=42, k_neighbors=5 (SMOTE/ADASYN/SVMSMOTE),
+          version=1/2/3 (NearMiss), smote=SMOTE(...), enn=EditedNearestNeighbours(...) (SMOTEENN),
+          tomek=TomekLinks(...) (SMOTETomek).
 
     Returns
     -------
-    imblearn.pipeline.Pipeline
-        A single-step pipeline: [('resample', <sampler or 'passthrough'>)].
+    BaseSampler or 'passthrough'
+        The configured sampler instance, or the literal string 'passthrough'.
 
     Raises
     ------
     ValueError
-        If `strategy_name` is not one of the supported names.
+        If `strategy_name` is not supported.
 
     Examples
     --------
-    >>> get_resampling_pipeline("SMOTE", sampling_strategy="auto", k_neighbors=5, random_state=42)
-    Pipeline(steps=[('resample', SMOTE(k_neighbors=5, random_state=42))])
+    >>> from imblearn.pipeline import Pipeline as ImbPipeline
+    >>> sampler = get_resampling_pipeline("SMOTE", sampling_strategy='auto', k_neighbors=5, random_state=42)
+    >>> pipe = ImbPipeline([("resample", sampler), ("clf", ...)])
 
-    >>> get_resampling_pipeline("RandomUnderSampler", sampling_strategy=0.01, random_state=42)
-    Pipeline(steps=[('resample',
-                     RandomUnderSampler(random_state=42, sampling_strategy=0.01))])
-
-    >>> get_resampling_pipeline(
-    ...     "SMOTEENN",
-    ...     smote=SMOTE(random_state=42, k_neighbors=5),
-    ...     enn=EditedNearestNeighbours(n_neighbors=3),
-    ... )
-    Pipeline(steps=[('resample',
-                     SMOTEENN(enn=EditedNearestNeighbours(n_neighbors=3),
-                              smote=SMOTE(k_neighbors=5, random_state=42)))])
+    >>> sampler = get_resampling_pipeline("none")
+    >>> pipe = ImbPipeline([("resample", sampler), ("clf", ...)])  # resample step is a passthrough
     """
     name = "none" if strategy_name is None else strategy_name.strip().lower()
 
     registry: Dict[str, Type] = {
         # Undersampling
         "randomundersampler": RandomUnderSampler,
-        "nearmiss": NearMiss,  # use kwargs 'version' = 1|2|3
+        "nearmiss": NearMiss,
         "tomeklinks": TomekLinks,
         "editednearestneighbours": EditedNearestNeighbours,
         "repeatededitednearestneighbours": RepeatedEditedNearestNeighbours,
@@ -677,12 +667,11 @@ def get_resampling_pipeline(
     }
 
     if name in {"none", "passthrough"}:
-        return ImbPipeline([("resample", "passthrough")])
+        return "passthrough"
 
     if name not in registry:
         supported = ", ".join(sorted(registry.keys()))
         raise ValueError(f"Unknown resampler '{strategy_name}'. Supported: {supported}")
 
     sampler_cls = registry[name]
-    sampler = sampler_cls(**kwargs)
-    return ImbPipeline([("resample", sampler)])
+    return sampler_cls(**kwargs)
