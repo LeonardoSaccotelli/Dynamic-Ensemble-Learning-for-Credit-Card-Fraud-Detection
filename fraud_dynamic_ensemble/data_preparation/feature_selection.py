@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Optional, Union, Tuple
+from typing import Optional, Tuple, Union
 
 from sklearn.feature_selection import (
     SelectFromModel,
@@ -10,7 +10,6 @@ from sklearn.feature_selection import (
     mutual_info_classif,
 )
 from sklearn.linear_model import LogisticRegression
-from sklearn.pipeline import FeatureUnion, Pipeline
 
 
 def get_feature_selection(
@@ -21,7 +20,7 @@ def get_feature_selection(
     solver: str = "liblinear",
     class_weight: Optional[str] = "balanced",
     max_iter: int = 2000,
-    n_jobs: Optional[int] = None,       # kept for API compatibility (ignored)
+    n_jobs: Optional[int] = None,
     random_state: Optional[int] = None,
 ) -> Tuple[SelectKBest, SelectFromModel]:
     """
