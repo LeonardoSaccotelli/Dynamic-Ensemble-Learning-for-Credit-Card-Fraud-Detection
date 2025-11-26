@@ -23,14 +23,19 @@ def train_and_evaluate_one_fold_static_model(
     scoring: str = "f1",
     random_state: int = 42,
     n_jobs: int = -1,
-) -> Tuple[Dict[str, Any], Dict[str, float], Dict[str, float]]:
+) -> tuple[
+    Union[ImbPipeline, Pipeline, BaseEstimator],
+    Dict[str, Any],
+    Dict[str, float],
+    Dict[str, float],
+]:
     """
     Tune a model (or pipeline) with RandomizedSearchCV on the training set,
     refit the best configuration, and report metrics on both train and test.
 
     The procedure uses stratified CV during hyperparameter search, then evaluates
     the selected estimator on:
-      1) the **training** set (resubstitution error) and
+      1) the **training** set (resubstitution error), and
       2) the **held-out test** set (generalization).
 
     Parameters
@@ -41,7 +46,7 @@ def train_and_evaluate_one_fold_static_model(
         ``predict_proba`` (or you must adapt the code to use ``decision_function``).
     search_space : dict
         Parameter distributions for ``RandomizedSearchCV``. Keys must match the estimator
-        (or pipeline step) names, e.g., ``"classifier__C"``, ``"select__skb__k"``.
+        (or pipeline step) names, e.g. ``"classifier__C"``, ``"select__skb__k"``.
     X_train, X_test : array-like of shape (n_samples, n_features)
         Training and test features.
     y_train, y_test : array-like of shape (n_samples,)
@@ -60,11 +65,13 @@ def train_and_evaluate_one_fold_static_model(
 
     Returns
     -------
+    best_model : imblearn.pipeline.Pipeline or sklearn.pipeline.Pipeline or BaseEstimator
+        The refit estimator corresponding to the best hyperparameter setting.
     tuning_results : dict
         Summary at the best index, including:
         - ``cv_tuning_mean_train_score``, ``cv_tuning_std_train_score``
         - ``cv_tuning_mean_val_score``, ``cv_tuning_std_val_score``
-        - ``best_params`` (dict)
+        - ``best_params`` (dict of the best hyperparameters)
         - ``tuning_time`` (seconds, float)
     resubstitution_metrics : dict[str, float]
         Metrics on the training set computed via ``compute_classification_metrics``.
@@ -78,19 +85,19 @@ def train_and_evaluate_one_fold_static_model(
       preserve class proportions across folds.
     - Ensure hyperparameter names align with your pipeline step names (scikit-learn
       double-underscore convention).
-    - If your estimator lacks ``predict_proba``, adapt the evaluation to use decision
-      scores or choose metrics compatible with hard labels only.
+    - For full reproducibility of the *search* itself, consider setting
+      ``random_state`` on ``RandomizedSearchCV`` as well.
 
     Examples
     --------
     Optimize a pipeline and evaluate:
 
     >>> splitter_metric = "average_precision"
-    >>> tuning, train_metrics, test_metrics = train_and_evaluate_one_fold_static_model(
-    ...     base_model=pipe,               # e.g., ImbPipeline([... ('classifier', clf)])
-    ...     search_space=param_distributions,
-    ...     X_train=X_tr, y_train=y_tr,
-    ...     X_test=X_te, y_test=y_te,
+    >>> best_model, tuning, resubstitution_metrics, test_metrics = train_and_evaluate_one_fold_static_model(
+    ...     base_model=base_model,            # e.g., ImbPipeline([... ('classifier', clf)])
+    ...     search_space=search_space,
+    ...     X_train=X_train, y_train=y_train,
+    ...     X_test=X_test, y_test=y_test,
     ...     n_iter=30,
     ...     val_cv_split=5,
     ...     scoring=splitter_metric,
@@ -148,4 +155,4 @@ def train_and_evaluate_one_fold_static_model(
     test_metrics = compute_classification_metrics(y_test, y_test_pred, y_test_pred_prob)
     test_metrics["score_time"] = end_score_time - start_score_time
 
-    return tuning_results, resubstitution_metrics, test_metrics
+    return best_model, tuning_results, resubstitution_metrics, test_metrics
