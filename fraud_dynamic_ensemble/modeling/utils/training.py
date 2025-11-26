@@ -25,50 +25,78 @@ def train_and_evaluate_one_fold_static_model(
     n_jobs: int = -1,
 ) -> Tuple[Dict[str, Any], Dict[str, float], Dict[str, float]]:
     """
-    Fit a model/pipeline with RandomizedSearchCV and report tuning, train, and test metrics.
+    Tune a model (or pipeline) with RandomizedSearchCV on the training set,
+    refit the best configuration, and report metrics on both train and test.
 
-    The function performs hyperparameter optimization with stratified CV on ``X_train, y_train``,
-    refits the best configuration on the full training set, and then computes metrics on both
-    the training (resubstitution) and test sets.
+    The procedure uses stratified CV during hyperparameter search, then evaluates
+    the selected estimator on:
+      1) the **training** set (resubstitution error) and
+      2) the **held-out test** set (generalization).
 
     Parameters
     ----------
-    base_model : imblearn.pipeline.Pipeline | sklearn.pipeline.Pipeline | BaseEstimator
-        The estimator or pipeline to optimize (must support ``fit`` and ``predict`` and, for
-        probability-based metrics, ``predict_proba``).
+    base_model : imblearn.pipeline.Pipeline or sklearn.pipeline.Pipeline or BaseEstimator
+        Estimator/pipeline to optimize. Must implement ``fit`` and ``predict``. If you
+        rely on probability-based metrics (e.g., ROC-AUC, AP), it should also implement
+        ``predict_proba`` (or you must adapt the code to use ``decision_function``).
     search_space : dict
-        Parameter distributions for ``RandomizedSearchCV`` (keys should match step names,
-        e.g. ``"classifier__C"``).
+        Parameter distributions for ``RandomizedSearchCV``. Keys must match the estimator
+        (or pipeline step) names, e.g., ``"classifier__C"``, ``"select__skb__k"``.
     X_train, X_test : array-like of shape (n_samples, n_features)
         Training and test features.
     y_train, y_test : array-like of shape (n_samples,)
         Training and test labels.
     n_iter : int, default=50
-        Number of RandomizedSearchCV iterations.
+        Number of parameter settings sampled by ``RandomizedSearchCV``.
     val_cv_split : int, default=5
-        Number of stratified folds for validation during tuning.
+        Number of stratified folds used during the hyperparameter search.
     scoring : str, default="f1"
-        Optimization metric passed to ``RandomizedSearchCV``.
+        Optimization metric passed to ``RandomizedSearchCV`` (e.g., ``"f1"``,
+        ``"average_precision"``, ``"roc_auc"``).
     random_state : int, default=42
-        Random seed for the CV splitter and (passed) search randomness.
+        Random seed for the ``StratifiedKFold`` splitter (shuffling enabled).
     n_jobs : int, default=-1
-        Parallel jobs for the hyperparameter search.
+        Number of parallel jobs for the search (``-1`` uses all available cores).
 
     Returns
     -------
     tuning_results : dict
-        Summary of tuning, including mean/std train/val scores for the best index, best params,
-        and total tuning time (seconds).
+        Summary at the best index, including:
+        - ``cv_tuning_mean_train_score``, ``cv_tuning_std_train_score``
+        - ``cv_tuning_mean_val_score``, ``cv_tuning_std_val_score``
+        - ``best_params`` (dict)
+        - ``tuning_time`` (seconds, float)
     resubstitution_metrics : dict[str, float]
-        Metrics computed on the training set using the best model.
+        Metrics on the training set computed via ``compute_classification_metrics``.
     test_metrics : dict[str, float]
-        Metrics computed on the test set using the best model; includes ``'score_time'`` (seconds).
+        Metrics on the test set computed via ``compute_classification_metrics``, plus
+        ``"score_time"`` (seconds to generate test predictions).
 
     Notes
     -----
-    - Assumes the best estimator exposes ``predict_proba``. If not, adapt the metric function
-      or convert decision scores accordingly.
-    - Uses ``StratifiedKFold`` with shuffling for stable class proportions across folds.
+    - The CV splitter is ``StratifiedKFold(shuffle=True, random_state=random_state)`` to
+      preserve class proportions across folds.
+    - Ensure hyperparameter names align with your pipeline step names (scikit-learn
+      double-underscore convention).
+    - If your estimator lacks ``predict_proba``, adapt the evaluation to use decision
+      scores or choose metrics compatible with hard labels only.
+
+    Examples
+    --------
+    Optimize a pipeline and evaluate:
+
+    >>> splitter_metric = "average_precision"
+    >>> tuning, train_metrics, test_metrics = train_and_evaluate_one_fold_static_model(
+    ...     base_model=pipe,               # e.g., ImbPipeline([... ('classifier', clf)])
+    ...     search_space=param_distributions,
+    ...     X_train=X_tr, y_train=y_tr,
+    ...     X_test=X_te, y_test=y_te,
+    ...     n_iter=30,
+    ...     val_cv_split=5,
+    ...     scoring=splitter_metric,
+    ...     random_state=42,
+    ...     n_jobs=-1,
+    ... )
     """
 
     splitter = StratifiedKFold(n_splits=val_cv_split, random_state=random_state, shuffle=True)
