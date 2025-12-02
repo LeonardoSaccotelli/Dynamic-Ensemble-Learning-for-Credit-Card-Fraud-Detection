@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+from typing import Any, Dict, Iterable
+
 from imblearn.ensemble import BalancedRandomForestClassifier, RUSBoostClassifier
 from scipy.stats import loguniform, randint, uniform
+from sklearn.base import BaseEstimator
 from sklearn.ensemble import (
     AdaBoostClassifier,
     ExtraTreesClassifier,
@@ -15,78 +18,307 @@ from sklearn.tree import DecisionTreeClassifier
 from xgboost import XGBClassifier
 
 
-def get_base_model_and_search_space(model_name: str, random_state: int | None = None) -> tuple:
+def _tree_common_param_space(
+    prefix: str = "classifier__",
+    max_depth_min: int = 3,
+    max_depth_max: int = 20,
+    min_samples_split_min: int = 2,
+    min_samples_split_max: int = 10,
+    min_samples_leaf_min: int = 1,
+    min_samples_leaf_max: int = 10,
+    max_leaf_nodes_min: int = 2,
+    max_leaf_nodes_max: int = 20,
+    min_impurity_decrease_min: float = 0.0,
+    min_impurity_decrease_max: float = 0.1,
+    ccp_alpha_min: float = 0.0,
+    ccp_alpha_max: float = 0.01,
+    max_features_choices: Iterable[str] = ("sqrt", "log2"),
+) -> Dict[str, Any]:
+    """
+    Build a common hyperparameter search space for tree-based models.
+
+    This helper returns a dictionary of SciPy distributions / lists for typical
+    decision-tree structure parameters. It is intended to be merged into a
+    `param_distributions` dictionary for `RandomizedSearchCV`.
+
+    All integer ranges are interpreted using ``scipy.stats.randint(a, b)``,
+    which samples integers in ``[a, b)`` (``b`` is exclusive). Floating ranges
+    are interpreted as ``a + uniform(0, b - a)`` (i.e. continuous in
+    ``[a, b)``).
+
+    Parameters
+    ----------
+    prefix : str, optional
+        Prefix for parameter names, usually the Pipeline step name plus
+        ``"__"``. Defaults to ``"classifier__"``.
+    max_depth_min : int, optional
+        Minimum value for ``max_depth``. Default is 3.
+    max_depth_max : int, optional
+        Maximum value (exclusive) for ``max_depth``. Default is 20.
+    min_samples_split_min : int, optional
+        Minimum value for ``min_samples_split``. Default is 2.
+    min_samples_split_max : int, optional
+        Maximum value (exclusive) for ``min_samples_split``. Default is 10.
+    min_samples_leaf_min : int, optional
+        Minimum value for ``min_samples_leaf``. Default is 1.
+    min_samples_leaf_max : int, optional
+        Maximum value (exclusive) for ``min_samples_leaf``. Default is 10.
+    max_leaf_nodes_min : int, optional
+        Minimum value for ``max_leaf_nodes``. Default is 2.
+    max_leaf_nodes_max : int, optional
+        Maximum value (exclusive) for ``max_leaf_nodes``. Default is 20.
+    min_impurity_decrease_min : float, optional
+        Minimum value for ``min_impurity_decrease``. Default is 0.0.
+    min_impurity_decrease_max : float, optional
+        Maximum value (exclusive) for ``min_impurity_decrease``. Default is 0.1.
+    ccp_alpha_min : float, optional
+        Minimum value for ``ccp_alpha``. Default is 0.0.
+    ccp_alpha_max : float, optional
+        Maximum value (exclusive) for ``ccp_alpha``. Default is 0.01.
+    max_features_choices : iterable of str, optional
+        Categorical choices for ``max_features``. Default is
+        ``("sqrt", "log2")``.
+
+    Returns
+    -------
+    dict
+        Dictionary mapping parameter names (with prefix) to SciPy distributions
+        or lists, suitable for use in ``RandomizedSearchCV``:
+
+        - ``<prefix>max_depth``
+        - ``<prefix>min_samples_split``
+        - ``<prefix>min_samples_leaf``
+        - ``<prefix>max_features``
+        - ``<prefix>max_leaf_nodes``
+        - ``<prefix>min_impurity_decrease``
+        - ``<prefix>ccp_alpha``
+
+    Notes
+    -----
+    - ``max_depth``: Maximum depth of the tree. Controls overfitting.
+    - ``min_samples_split``: Minimum number of samples to split an internal node.
+    - ``min_samples_leaf``: Minimum number of samples required at a leaf node.
+    - ``max_features``: Number of features considered at each split.
+    - ``max_leaf_nodes``: Maximum number of terminal nodes. Limits complexity.
+    - ``min_impurity_decrease``: A node is split if the impurity decrease
+      is at least this value.
+    - ``ccp_alpha``: Complexity parameter for Minimal Cost-Complexity Pruning.
+    """
+    return {
+        f"{prefix}max_depth": randint(max_depth_min, max_depth_max),
+        f"{prefix}min_samples_split": randint(min_samples_split_min, min_samples_split_max),
+        f"{prefix}min_samples_leaf": randint(min_samples_leaf_min, min_samples_leaf_max),
+        f"{prefix}max_features": list(max_features_choices),
+        f"{prefix}max_leaf_nodes": randint(max_leaf_nodes_min, max_leaf_nodes_max),
+        f"{prefix}min_impurity_decrease": uniform(
+            min_impurity_decrease_min,
+            min_impurity_decrease_max - min_impurity_decrease_min,
+        ),
+        f"{prefix}ccp_alpha": uniform(
+            ccp_alpha_min,
+            ccp_alpha_max - ccp_alpha_min,
+        ),
+    }
+
+
+def _boosting_core_param_space(
+    prefix: str = "classifier__",
+    n_estimators_min: int = 100,
+    n_estimators_max: int = 1000,
+    learning_rate_min: float = 1e-3,
+    learning_rate_max: float = 1.0,
+) -> Dict[str, Any]:
+    """
+    Build a common hyperparameter search space for boosting core parameters.
+
+    This helper returns a dictionary for the two central hyperparameters of most
+    boosting algorithms:
+
+    - ``n_estimators``: number of boosting stages (additive steps).
+    - ``learning_rate``: shrinkage factor applied at each boosting step.
+
+    Both parameters are returned with names prefixed by ``prefix``, so that they
+    can be used directly in a scikit-learn ``Pipeline`` where the boosting
+    estimator is in a step named, for example, ``"classifier"``.
+
+    Parameters
+    ----------
+    prefix : str, optional
+        Prefix for parameter names, usually the Pipeline step name plus
+        ``"__"``. Defaults to ``"classifier__"``.
+    n_estimators_min : int, optional
+        Minimum value for ``n_estimators``. Default is 100.
+    n_estimators_max : int, optional
+        Maximum value (exclusive) for ``n_estimators``. Default is 1000.
+        The effective sampled range is ``[n_estimators_min, n_estimators_max)``.
+    learning_rate_min : float, optional
+        Minimum value for ``learning_rate`` (log-uniform lower bound).
+        Must be strictly positive. Default is ``1e-3``.
+    learning_rate_max : float, optional
+        Maximum value for ``learning_rate`` (log-uniform upper bound).
+        Must be strictly greater than ``learning_rate_min``.
+        Default is ``1.0``.
+
+    Returns
+    -------
+    dict
+        Dictionary mapping:
+
+        - ``<prefix>n_estimators`` → ``scipy.stats.randint``
+        - ``<prefix>learning_rate`` → ``scipy.stats.loguniform``
+
+        suitable for use in ``RandomizedSearchCV``.
+
+    Notes
+    -----
+    - ``n_estimators`` controls the number of boosting stages.
+      Larger values reduce bias but may increase variance and training time.
+    - ``learning_rate`` scales the contribution of each stage (shrinkage).
+      Smaller values typically require more estimators but improve regularization.
+    """
+    return {
+        f"{prefix}n_estimators": randint(n_estimators_min, n_estimators_max),
+        f"{prefix}learning_rate": loguniform(learning_rate_min, learning_rate_max),
+    }
+
+
+def get_static_model_and_search_space(
+    model_name: str, random_state: int | None = None
+) -> tuple[BaseEstimator, Dict[str, Any]]:
     """
     Return a classifier instance and its hyperparameter search space.
 
-    This factory builds a scikit-learn/imbalanced-learn/XGBoost/LightGBM estimator
-    (configured with sensible defaults for class imbalance where applicable) and a
-    parameter distribution dictionary intended for `RandomizedSearchCV`.
+    This factory builds a scikit-learn / imbalanced-learn / XGBoost estimator
+    (configured with sensible defaults for class imbalance where applicable)
+    together with a parameter distribution dictionary intended for use with
+    ``RandomizedSearchCV``.
 
-    The parameter names in the returned `param_dist` assume your estimator lives in a
-    scikit-learn `Pipeline` step called **"classifier"** (e.g., `"classifier__C"`).
+    The parameter names in the returned ``param_dist`` assume that your
+    estimator is wrapped in a scikit-learn ``Pipeline`` step called
+    ``"classifier"``, so hyperparameters are prefixed with
+    ``"classifier__"`` (e.g. ``"classifier__C"``).
 
     Parameters
     ----------
     model_name : str
-        Canonical model key. Supported:
-        {'SVC', 'MLPClassifier', 'KNeighborsClassifier', 'DecisionTreeClassifier',
-         'RandomForestClassifier', 'ExtraTreesClassifier', 'BalancedRandomForestClassifier',
-         'AdaBoostClassifier', 'LogitBoostClassifier', 'XGBClassifier',
-         'RUSBoostClassifier'}.
+        Canonical model key. Supported values are::
+
+            {
+                'SVC',
+                'MLPClassifier',
+                'KNeighborsClassifier',
+                'DecisionTreeClassifier',
+                'RandomForestClassifier',
+                'ExtraTreesClassifier',
+                'BalancedRandomForestClassifier',
+                'AdaBoostClassifier',
+                'LogitBoostClassifier',
+                'XGBClassifier',
+                'RUSBoostClassifier',
+            }
+
     random_state : int or None, optional
-        Random seed forwarded to models that accept it (e.g., trees, MLP, XGB/LGBM,
-        imblearn ensembles). If `None`, models use their library default.
+        Random seed forwarded to models that accept it (e.g., trees, MLP,
+        gradient boosting, XGBoost, imbalanced-learn ensembles). If ``None``,
+        models use their library default.
 
     Returns
     -------
     estimator : sklearn.base.BaseEstimator
         The configured classifier instance (not fitted).
     param_dist : dict
-        Mapping of hyperparameter names → SciPy distributions / lists, suitable for
-        `RandomizedSearchCV(param_distributions=...)`. Names are prefixed with
-        `"classifier__"` to match a Pipeline step named `"classifier"`.
+        Mapping of hyperparameter names to SciPy distributions or lists,
+        suitable for ``RandomizedSearchCV(param_distributions=...)``.
+        All names are prefixed with ``"classifier__"`` to match a Pipeline
+        step named ``"classifier"``.
 
     Raises
     ------
     ValueError
-        If `model_name` is not one of the supported keys.
+        If ``model_name`` is not one of the supported keys.
     ImportError
-        If the requested model requires an optional dependency that is not installed
-        (e.g., `xgboost`, `imbalanced-learn`).
+        If the requested model requires an optional dependency that is not
+        installed (e.g., ``xgboost``, ``imbalanced-learn``).
 
     Notes
     -----
-    - **Imbalance handling**:
-      - Many tree models are initialized with `class_weight='balanced'`.
-      - `BalancedRandomForestClassifier` and `RUSBoostClassifier` (imblearn) perform
-        internal resampling; `sampling_strategy='all'` for BRF is set via defaults.
-      - `XGBClassifier` includes `scale_pos_weight` in the search space.
-    - **Distributions**:
-      - Spaces use `scipy.stats` `randint`, `uniform`, and `loguniform` (for positive,
-        multiplicative ranges such as `C`, `gamma`, learning rates, regularization).
-    - **SVC**:
-      - `probability=True` enables calibrated probabilities (slower than decision
-        function). Kernels searched: `{'rbf','poly','linear'}` with degree for `poly`.
-    - **MLPClassifier**:
-      - Uses `early_stopping=True` and a large `max_iter` to converge reliably.
-    - **Tree ensembles**:
-      - Random/Extra Trees search typical depth/split/leaf/max_features ranges; some
-        include `max_leaf_nodes`, `min_impurity_decrease`, and `ccp_alpha`.
-    - **Gradient/Ada/LogitBoost**:
-      - `LogitBoostClassifier` here is implemented with `GradientBoostingClassifier`
-        and `loss='log_loss'`; learning rate and structure are part of the search.
-    - **Pipeline naming**:
-      - The `"classifier__"` prefix in `param_dist` requires:
-        `Pipeline([('classifier', <estimator>)])`.
+    Imbalance handling
+        - Many tree-based models are initialized with
+          ``class_weight='balanced'``.
+        - ``BalancedRandomForestClassifier`` and ``RUSBoostClassifier``
+          (from imbalanced-learn) perform internal resampling; for BRF
+          the default ``sampling_strategy='all'`` is used.
+        - ``XGBClassifier`` includes ``scale_pos_weight`` in the search
+          space to handle strong class imbalance.
+
+    Distributions and shared helpers
+        - Integer ranges use ``scipy.stats.randint(a, b)`` which samples
+          integers in ``[a, b)``.
+        - Continuous ranges use ``scipy.stats.uniform(a, b - a)`` to sample
+          values in ``[a, b)``.
+        - Positive, multiplicative ranges (e.g. ``C``, ``gamma``, learning
+          rates, regularization strengths) use
+          ``scipy.stats.loguniform(low, high)``.
+        - Tree-based models share a common structural search space via
+          ``_tree_common_param_space()``, which controls:
+          ``max_depth``, ``min_samples_split``, ``min_samples_leaf``,
+          ``max_features``, ``max_leaf_nodes``, ``min_impurity_decrease``,
+          and ``ccp_alpha``.
+        - Boosting algorithms (AdaBoost, LogitBoost, XGBoost, RUSBoost)
+          share a core search space via ``_boosting_core_param_space()``,
+          which tunes ``n_estimators`` and ``learning_rate``; each model
+          then adds its own structural and regularization parameters.
+
+    Model-specific behaviour
+        - SVC:
+          ``probability=True`` is enabled to provide calibrated probabilities
+          (slower than using the decision function). The search space covers
+          ``C``, ``gamma``, and the kernel family
+          ``{'rbf', 'poly', 'linear'}``, including the polynomial degree.
+        - MLPClassifier:
+          Uses ``early_stopping=True`` with a large ``max_iter`` and searches
+          over hidden layer sizes, L2 regularization (``alpha``), initial
+          learning rate and batch_size
+        - Tree ensembles (DecisionTree, RandomForest, ExtraTrees,
+          BalancedRandomForest):
+          Share the tree-structure search space (depth, splits, leaves,
+          features, leaf nodes, impurity decrease, pruning strength), with
+          additional model-specific parameters such as the number of trees
+          and ``max_samples`` for bagging.
+        - Gradient/Ada/LogitBoost:
+          ``LogitBoostClassifier`` is implemented with
+          ``GradientBoostingClassifier(loss='log_loss')`` and tunes the
+          boosting core parameters, shallow tree structure (depth, leaf size,
+          max features), and subsampling rate.
+          ``AdaBoostClassifier`` and ``RUSBoostClassifier`` tune only the
+          boosting core (number of stages and learning rate), using decision
+          stumps as base learners by default.
+        - XGBClassifier:
+          Tunes boosting core parameters, tree capacity
+          (``max_depth``, ``min_child_weight``), stochasticity
+          (``subsample``, ``colsample_bytree``), regularization
+          (``reg_alpha``, ``reg_lambda``, ``gamma``), and
+          ``scale_pos_weight`` for class imbalance.
+
+    Pipeline naming
+        The returned ``param_dist`` assumes that the estimator is wrapped in
+        a Pipeline step named ``"classifier"``. For example:
+
+        ``Pipeline([('classifier', <estimator>)])``
+
+        so that all hyperparameters can be referenced as
+        ``"classifier__<param_name>"`` in ``RandomizedSearchCV``.
 
     Examples
     --------
-    Build a pipeline and randomized search:
+    Build a pipeline and randomized search for a Random Forest:
 
     >>> from sklearn.pipeline import Pipeline
     >>> from sklearn.model_selection import RandomizedSearchCV
-    >>> clf, space = get_base_model_and_search_space('RandomForestClassifier', random_state=42)
+    >>> clf, space = get_static_model_and_search_space(
+    ...     'RandomForestClassifier',
+    ...     random_state=42,
+    ... )
     >>> pipe = Pipeline([('classifier', clf)])
     >>> search = RandomizedSearchCV(
     ...     estimator=pipe,
@@ -95,14 +327,24 @@ def get_base_model_and_search_space(model_name: str, random_state: int | None = 
     ...     cv=5,
     ...     scoring='average_precision',
     ...     random_state=42,
-    ...     n_jobs=-1
+    ...     n_jobs=-1,
     ... )
 
-    Swap to XGBoost:
+    Swap to XGBoost with the same interface:
 
-    >>> clf, space = get_base_model_and_search_space('XGBClassifier', random_state=42)
+    >>> clf, space = get_static_model_and_search_space(
+    ...     'XGBClassifier',
+    ...     random_state=42,
+    ... )
     >>> pipe = Pipeline([('classifier', clf)])
-    >>> search = RandomizedSearchCV(pipe, space, n_iter=50, cv=5, n_jobs=-1, random_state=42)
+    >>> search = RandomizedSearchCV(
+    ...     estimator=pipe,
+    ...     param_distributions=space,
+    ...     n_iter=50,
+    ...     cv=5,
+    ...     n_jobs=-1,
+    ...     random_state=42,
+    ... )
     """
     model_configurations = {
         "SVC": {
@@ -123,10 +365,10 @@ def get_base_model_and_search_space(model_name: str, random_state: int | None = 
             "param_dist": {
                 # Regularization parameter. Smaller values specify stronger regularization.
                 "classifier__C": loguniform(1e-3, 1e3),
-                "classifier__gamma": loguniform(
-                    1e-4, 1e0
-                ),  # Kernel coefficient for 'rbf' and 'poly' kernels.
-                "classifier__kernel": ["rbf", "poly", "linear"],  # Kernel type
+                # Kernel coefficient for 'rbf' and 'poly' kernels.
+                "classifier__gamma": loguniform(1e-4, 1e0),
+                # Kernel type
+                "classifier__kernel": ["rbf", "poly", "linear"],
                 # Degree of the polynomial kernel function (only relevant if kernel='poly').
                 "classifier__degree": randint(2, 5),
             },
@@ -152,8 +394,11 @@ def get_base_model_and_search_space(model_name: str, random_state: int | None = 
                     (128, 64),
                     (128, 64, 32),
                 ],
-                "classifier__alpha": loguniform(1e-5, 1e-2),  # Regularization strength
-                "classifier__learning_rate_init": loguniform(1e-4, 1e-2),  # Initial learning rate
+                # Regularization strength
+                "classifier__alpha": loguniform(1e-5, 1e-2),
+                # Initial learning rate
+                "classifier__learning_rate_init": loguniform(1e-4, 1e-2),
+                "classifier__batch_size": [16, 32, 64, 128],
             },
         },
         "KNeighborsClassifier": {
@@ -164,7 +409,8 @@ def get_base_model_and_search_space(model_name: str, random_state: int | None = 
                 "leaf_size": 30,
             },
             "param_dist": {
-                "classifier__n_neighbors": randint(3, 20),  # Number of neighbors to use.
+                # Number of neighbors to use.
+                "classifier__n_neighbors": randint(3, 20),
                 # Weight function used in prediction.
                 # 'uniform': all neighbors have equal weight.
                 # 'distance': closer neighbors have greater influence.
@@ -177,42 +423,23 @@ def get_base_model_and_search_space(model_name: str, random_state: int | None = 
         "DecisionTreeClassifier": {
             "model_class": DecisionTreeClassifier,
             "model_args": {
-                "criterion": "gini",  # The function to measure the quality of a split.
+                # The function to measure the quality of a split.
+                "criterion": "gini",
                 # Weights associated with classes. The “balanced” mode uses the values of y to automatically
                 # adjust weights inversely proportional to class frequencies in the input data.
                 "class_weight": "balanced",
                 "splitter": "best",
                 "random_state": random_state,
             },
-            "param_dist": {
-                "classifier__max_depth": randint(
-                    3, 20
-                ),  # Maximum depth of the tree. Controls overfitting.
-                "classifier__min_samples_split": randint(
-                    2, 10
-                ),  # Minimum number of samples required to split an internal node.
-                "classifier__min_samples_leaf": randint(
-                    1, 10
-                ),  # Minimum number of samples required at a leaf node.
-                "classifier__max_features": [
-                    "sqrt",
-                    "log2",
-                ],  # Number of features to consider when looking for the best split.
-                "classifier__max_leaf_nodes": randint(
-                    2, 20
-                ),  # Maximum number of terminal nodes. Limits model complexity.
-                # A node will be split if this split induces a decrease of the impurity greater than or equal to this value.
-                "classifier__min_impurity_decrease": uniform(0.0, 0.1),
-                # Complexity parameter used for Minimal Cost-Complexity Pruning.
-                # Values typically very small (0.0 to ~0.05).
-                "classifier__ccp_alpha": uniform(0.0, 0.01),
-            },
+            "param_dist": _tree_common_param_space(),
         },
         "RandomForestClassifier": {
             "model_class": RandomForestClassifier,
             "model_args": {
-                "criterion": "gini",  # The function to measure the quality of a split.
-                "bootstrap": True,  # Bootstrapping (sampling with replacement) enabled.
+                # The function to measure the quality of a split.
+                "criterion": "gini",
+                # Bootstrapping (sampling with replacement) enabled.
+                "bootstrap": True,
                 "oob_score": False,
                 "n_jobs": 1,
                 # Weights associated with classes. The “balanced” mode uses the values of y to automatically
@@ -221,38 +448,21 @@ def get_base_model_and_search_space(model_name: str, random_state: int | None = 
                 "random_state": random_state,
             },
             "param_dist": {
-                "classifier__n_estimators": randint(50, 300),  # Number of trees in the forest.
-                "classifier__max_depth": randint(
-                    3, 20
-                ),  # Maximum depth of the tree. Controls overfitting.
-                "classifier__min_samples_split": randint(
-                    2, 10
-                ),  # Minimum number of samples required to split an internal node.
-                "classifier__min_samples_leaf": randint(
-                    1, 10
-                ),  # Minimum number of samples required at a leaf node.
-                "classifier__max_features": [
-                    "sqrt",
-                    "log2",
-                ],  # Number of features to consider when looking for the best split.
-                "classifier__max_leaf_nodes": randint(
-                    2, 20
-                ),  # Maximum number of terminal nodes. Limits model complexity.
-                "classifier__max_samples": uniform(0.5, 0.5),
-                # A node will be split if this split induces a decrease of the impurity greater than or equal to this value.
-                "classifier__min_impurity_decrease": uniform(
-                    0.0, 0.1
-                ),  # Subsampling of rows per tree (when bootstrap=True).
-                # Complexity parameter used for Minimal Cost-Complexity Pruning.
-                # Values typically very small (0.0 to ~0.05).
-                "classifier__ccp_alpha": uniform(0.0, 0.01),
+                # Number of trees in the forest.
+                "classifier__n_estimators": randint(100, 1000),
+                # Controls the size of the bootstrap sample (the subset of data)
+                # used to train each individual decision tree in the forest: [0.5, 0.5 + 0.4] = [0.5, 0.9]
+                "classifier__max_samples": uniform(0.5, 0.4),
+                **_tree_common_param_space(),
             },
         },
         "ExtraTreesClassifier": {
             "model_class": ExtraTreesClassifier,
             "model_args": {
-                "criterion": "gini",  # The function to measure the quality of a split.
-                "bootstrap": False,  # Each tree is trained using the whole learning sample (bootstrap = False)
+                # The function to measure the quality of a split.
+                "criterion": "gini",
+                # Each tree is trained using the whole learning sample (bootstrap = False, max_samples = None)
+                "bootstrap": False,
                 "max_samples": None,
                 "oob_score": False,
                 "n_jobs": 1,
@@ -262,72 +472,35 @@ def get_base_model_and_search_space(model_name: str, random_state: int | None = 
                 "random_state": random_state,
             },
             "param_dist": {
-                "classifier__n_estimators": randint(50, 300),  # Number of trees in the forest.
-                "classifier__max_depth": randint(
-                    3, 20
-                ),  # Maximum depth of the tree. Controls overfitting.
-                "classifier__min_samples_split": randint(
-                    2, 10
-                ),  # Minimum number of samples required to split an internal node.
-                "classifier__min_samples_leaf": randint(
-                    1, 10
-                ),  # Minimum number of samples required at a leaf node.
-                "classifier__max_features": [
-                    "sqrt",
-                    "log2",
-                ],  # Number of features to consider when looking for the best split.
-                "classifier__max_leaf_nodes": randint(
-                    2, 20
-                ),  # Maximum number of terminal nodes. Limits model complexity.
-                # A node will be split if this split induces a decrease of the impurity greater than or equal to this value.
-                "classifier__min_impurity_decrease": uniform(
-                    0.0, 0.1
-                ),  # Subsampling of rows per tree (when bootstrap=True).
-                # Complexity parameter used for Minimal Cost-Complexity Pruning.
-                # Values typically very small (0.0 to ~0.05).
-                "classifier__ccp_alpha": uniform(0.0, 0.01),
+                # Number of trees in the forest.
+                "classifier__n_estimators": randint(100, 1000),
+                **_tree_common_param_space(),
             },
         },
         "BalancedRandomForestClassifier": {
             "model_class": BalancedRandomForestClassifier,
             "model_args": {
-                "criterion": "gini",  # The function to measure the quality of a split.
-                "bootstrap": False,  # Each tree is trained using the whole learning sample (bootstrap = False)
+                # The function to measure the quality of a split.
+                "criterion": "gini",
+                # Each tree is trained using the whole learning sample (bootstrap = False, max_samples = None)
+                # Bootstrapping is already taken care by the internal sampler using replacement=True
+                "bootstrap": False,
                 "max_samples": None,
                 "oob_score": False,
-                "sampling_strategy": "all",  # Sampling information to sample the data set: "all"=resample all classes
-                "replacement": True,  # Whether to sample randomly with replacement or not.
+                # Sampling information to sample the data set: "all"=resample all classes
+                "sampling_strategy": "all",
+                # Whether to sample randomly with replacement or not.
+                "replacement": True,
                 "n_jobs": 1,
-                # Weights associated with classes. The “balanced” mode uses the values of y to automatically
-                # adjust weights inversely proportional to class frequencies in the input data.
-                "class_weight": "balanced",
+                # The “balanced_subsample” mode is the same as “balanced” except
+                # that weights are computed based on the bootstrap sample for every tree grown.
+                "class_weight": "balanced_subsample",
                 "random_state": random_state,
             },
             "param_dist": {
-                "classifier__n_estimators": randint(50, 300),  # Number of trees in the forest.
-                "classifier__max_depth": randint(
-                    3, 20
-                ),  # Maximum depth of the tree. Controls overfitting.
-                "classifier__min_samples_split": randint(
-                    2, 10
-                ),  # Minimum number of samples required to split an internal node.
-                "classifier__min_samples_leaf": randint(
-                    1, 10
-                ),  # Minimum number of samples required at a leaf node.
-                "classifier__max_features": [
-                    "sqrt",
-                    "log2",
-                ],  # Number of features to consider when looking for the best split.
-                "classifier__max_leaf_nodes": randint(
-                    2, 20
-                ),  # Maximum number of terminal nodes. Limits model complexity.
-                # A node will be split if this split induces a decrease of the impurity greater than or equal to this value.
-                "classifier__min_impurity_decrease": uniform(
-                    0.0, 0.1
-                ),  # Subsampling of rows per tree (when bootstrap=True).
-                # Complexity parameter used for Minimal Cost-Complexity Pruning.
-                # Values typically very small (0.0 to ~0.05).
-                "classifier__ccp_alpha": uniform(0.0, 0.01),
+                # Number of trees in the forest.
+                "classifier__n_estimators": randint(100, 1000),
+                **_tree_common_param_space(),
             },
         },
         "AdaBoostClassifier": {
@@ -336,105 +509,106 @@ def get_base_model_and_search_space(model_name: str, random_state: int | None = 
                 "estimator": DecisionTreeClassifier(max_depth=1),
                 "random_state": random_state,
             },
-            "param_dist": {
-                "classifier__n_estimators": randint(50, 200),  # Number of weak learners
-                # Weight applied to each classifier at each boosting iteration.
-                # A higher learning rate increases the contribution of each classifier.
-                "classifier__learning_rate": loguniform(1e-3, 1.0),
-            },
+            "param_dist": _boosting_core_param_space(
+                n_estimators_min=50,
+                n_estimators_max=800,
+                learning_rate_min=1e-3,
+                learning_rate_max=1.0,
+            ),
         },
         "LogitBoostClassifier": {
             "model_class": GradientBoostingClassifier,
             "model_args": {
-                "loss": "log_loss",  # ‘log_loss’ refers to binomial and multinomial deviance, the same as used in logistic regression.
+                # log_loss refers to binomial and multinomial deviance,
+                # the same as used in logistic regression.
+                "loss": "log_loss",
+                # Function to measure the quality of a split.
                 "criterion": "friedman_mse",
+                # Fraction of samples to be used for fitting the individual base learners.
                 "subsample": 1.0,
+                # Early stopping criteria
                 "validation_fraction": 0.1,
                 "n_iter_no_change": 10,
                 "random_state": random_state,
             },
             "param_dist": {
-                "classifier__n_estimators": randint(
-                    50, 300
-                ),  # Number of boosting stages to perform.
-                "classifier__max_depth": randint(
-                    3, 20
-                ),  # Maximum depth of the tree. Controls overfitting.
-                "classifier__min_samples_split": randint(
-                    2, 10
-                ),  # Minimum number of samples required to split an internal node.
-                "classifier__min_samples_leaf": randint(
-                    1, 10
-                ),  # Minimum number of samples required at a leaf node.
-                "classifier__max_features": [
-                    "sqrt",
-                    "log2",
-                ],  # Number of features to consider when looking for the best split.
-                "classifier__max_leaf_nodes": randint(
-                    2, 20
-                ),  # Maximum number of terminal nodes. Limits model complexity.
-                # A node will be split if this split induces a decrease of the impurity greater than or equal to this value.
-                "classifier__min_impurity_decrease": uniform(
-                    0.0, 0.1
-                ),  # Subsampling of rows per tree (when bootstrap=True).
+                **_boosting_core_param_space(
+                    n_estimators_min=50,
+                    n_estimators_max=400,
+                    learning_rate_min=1e-2,
+                    learning_rate_max=0.3,
+                ),
+                # Maximum depth of the tree. Controls overfitting.
+                "classifier__max_depth": randint(1, 4),
+                # Minimum number of samples required to split an internal node.
+                "classifier__min_samples_split": randint(2, 21),
+                # Minimum number of samples required at a leaf node.
+                "classifier__min_samples_leaf": randint(1, 10),
+                # Number of features to consider when looking for the best split.
+                "classifier__max_features": ["sqrt", "log2"],
+                # Subsampling of rows per tree (when bootstrap=True).
+                "classifier__max_leaf_nodes": randint(2, 20),
+                # A node will be split if this split induces a decrease of the
+                # impurity greater than or equal to this value.
+                "classifier__min_impurity_decrease": uniform(0.0, 0.1),
                 # Complexity parameter used for Minimal Cost-Complexity Pruning.
                 # Values typically very small (0.0 to ~0.05).
                 "classifier__ccp_alpha": uniform(0.0, 0.01),
-                # Weight applied to each classifier at each boosting iteration.
-                # A higher learning rate increases the contribution of each classifier.
-                "classifier__learning_rate": loguniform(1e-3, 1.0),
             },
         },
         "XGBClassifier": {
             "model_class": XGBClassifier,
             "model_args": {
-                "objective": "binary:logistic",  # Binary classification with logistic loss.
-                "eval_metric": "logloss",  # Consistent with binary:logistic.
-                "n_jobs": 1,  # Parallel training.py.
+                # Binary classification with logistic loss.
+                "objective": "binary:logistic",
+                # Consistent with binary:logistic.
+                "eval_metric": "logloss",
+                "n_jobs": 1,
                 "random_state": random_state,
             },
             "param_dist": {
-                "classifier__n_estimators": randint(50, 300),  # Number of boosting rounds (trees).
-                "classifier__max_depth": randint(
-                    3, 10
-                ),  # Maximum tree depth — lower = less overfitting.
-                "classifier__learning_rate": loguniform(
-                    0.01, 0.3
-                ),  # Shrinks the contribution of each tree.
-                "classifier__subsample": uniform(
-                    0.6, 0.4
-                ),  # Fraction of samples per tree. Helps generalization.
-                "classifier__colsample_bytree": uniform(0.6, 0.4),
+                **_boosting_core_param_space(
+                    n_estimators_min=200,
+                    n_estimators_max=800,
+                    learning_rate_min=1e-2,
+                    learning_rate_max=0.2,
+                ),
+                # Maximum tree depth — lower = less overfitting.
+                "classifier__max_depth": randint(3, 10),
+                # Fraction of samples per tree. Helps generalization: [0.6, 0.6 + 0.4] = [0.6, 1.0]
+                "classifier__subsample": uniform(0.6, 0.4),
                 # Fraction of features per tree. Avoids co-adaptation.
-                "classifier__gamma": uniform(
-                    0.0, 5.0
-                ),  # Minimum loss reduction for a split. Acts as regularization.
-                "classifier__reg_alpha": loguniform(1e-4, 10.0),  # L1 regularization on weights.
-                "classifier__reg_lambda": loguniform(1e-4, 10.0),  # L2 regularization on weights.
-                "classifier__scale_pos_weight": uniform(
-                    1.0, 10.0
-                ),  # Used to balance positive and negative weights.
-                "classifier__min_child_weight": randint(
-                    1, 10
-                ),  # Minimum sum of instance weight (hessian) in child.
-                "classifier__max_delta_step": randint(
-                    0, 10
-                ),  # Helps with logistic regression in imbalanced data.
+                "classifier__colsample_bytree": uniform(0.6, 0.4),
+                # Minimum loss reduction for a split. Acts as regularization.
+                "classifier__gamma": uniform(0.0, 5.0),
+                # L1 regularization on weights.
+                "classifier__reg_alpha": loguniform(1e-4, 10.0),
+                # L2 regularization on weights.
+                "classifier__reg_lambda": loguniform(1e-4, 10.0),
+                # Used to balance positive and negative weights.
+                "classifier__scale_pos_weight": loguniform(0.5, 50.0),
+                # Minimum sum of instance weight (hessian) in child.
+                "classifier__min_child_weight": randint(1, 10),
+                # Helps with logistic regression in imbalanced data.
+                "classifier__max_delta_step": randint(0, 10),
             },
         },
         "RUSBoostClassifier": {
             "model_class": RUSBoostClassifier,
             "model_args": {
-                "sampling_strategy": "auto",  # Sampling information to sample the data set: "auto"='not minority'.
-                "replacement": False,  # Whether to sample randomly with replacement or not.
+                "estimator": DecisionTreeClassifier(max_depth=1),
+                # Sampling information to sample the data set: "auto"='not minority'.
+                "sampling_strategy": "auto",
+                # Whether to sample randomly with replacement or not.
+                "replacement": False,
                 "random_state": random_state,
             },
-            "param_dist": {
-                "classifier__n_estimators": randint(50, 200),  # Number of weak learners
-                # Weight applied to each classifier at each boosting iteration.
-                # A higher learning rate increases the contribution of each classifier.
-                "classifier__learning_rate": loguniform(1e-3, 1.0),
-            },
+            "param_dist": _boosting_core_param_space(
+                n_estimators_min=50,
+                n_estimators_max=800,
+                learning_rate_min=1e-3,
+                learning_rate_max=1.0,
+            ),
         },
     }
 
