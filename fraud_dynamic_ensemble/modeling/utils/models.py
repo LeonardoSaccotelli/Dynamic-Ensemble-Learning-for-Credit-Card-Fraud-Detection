@@ -1,12 +1,16 @@
 from __future__ import annotations
 
-from typing import Any, Dict, Iterable
+from typing import Any, Dict, Iterable, Tuple, Type
 
+from deslib.dcs import LCA, MLA, OLA, APosteriori, APriori
+from deslib.des import DESKNN, DESP, KNOP, KNORAE, KNORAU, METADES, DESClustering
+from deslib.des.probabilistic import DESKL, RRC, Exponential, Logarithmic
 from imblearn.ensemble import BalancedRandomForestClassifier, RUSBoostClassifier
 from scipy.stats import loguniform, randint, uniform
 from sklearn.base import BaseEstimator
 from sklearn.ensemble import (
     AdaBoostClassifier,
+    BaggingClassifier,
     ExtraTreesClassifier,
     GradientBoostingClassifier,
     RandomForestClassifier,
@@ -211,6 +215,7 @@ def get_static_model_and_search_space(
                 'RandomForestClassifier',
                 'ExtraTreesClassifier',
                 'BalancedRandomForestClassifier',
+                'BaggingDecisionTreeClassifier',
                 'AdaBoostClassifier',
                 'LogitBoostClassifier',
                 'XGBClassifier',
@@ -278,13 +283,20 @@ def get_static_model_and_search_space(
         - MLPClassifier:
           Uses ``early_stopping=True`` with a large ``max_iter`` and searches
           over hidden layer sizes, L2 regularization (``alpha``), initial
-          learning rate and batch_size
+          learning rate, and ``batch_size``.
         - Tree ensembles (DecisionTree, RandomForest, ExtraTrees,
           BalancedRandomForest):
           Share the tree-structure search space (depth, splits, leaves,
           features, leaf nodes, impurity decrease, pruning strength), with
           additional model-specific parameters such as the number of trees
           and ``max_samples`` for bagging.
+        - BaggingDecisionTreeClassifier:
+          Wraps a class-balanced ``DecisionTreeClassifier`` inside a
+          ``BaggingClassifier``. The search space includes both
+          bagging-level parameters (``n_estimators``, ``max_samples``,
+          ``max_features``) and the internal tree structure, using the
+          ``"classifier__estimator__"`` prefix (e.g.
+          ``classifier__estimator__max_depth``).
         - Gradient/Ada/LogitBoost:
           ``LogitBoostClassifier`` is implemented with
           ``GradientBoostingClassifier(loss='log_loss')`` and tunes the
@@ -503,6 +515,37 @@ def get_static_model_and_search_space(
                 **_tree_common_param_space(),
             },
         },
+        "BaggingDecisionTreeClassifier": {
+            "model_class": BaggingClassifier,
+            "model_args": {
+                "estimator": DecisionTreeClassifier(
+                    # The function to measure the quality of a split.
+                    criterion="gini",
+
+                    # Weights associated with classes. The “balanced” mode uses the values of y to automatically
+                    # adjust weights inversely proportional to class frequencies in the input data.
+                    class_weight="balanced",
+                    splitter="best",
+                    random_state=random_state,
+                ),
+            },
+            "param_dist": {
+                # --- Bagging-level hyperparameters ---
+                # Number of trees in the ensemble
+                "classifier__n_estimators": randint(100, 1000),
+
+                # Fraction of samples used per base estimator: [0.5, 1.0)
+                "classifier__max_samples": uniform(0.5, 0.5),
+
+                # Fraction of features used per base estimator: [0.5, 1.0)
+                "classifier__max_features": uniform(0.5, 0.5),
+
+                # --- Internal DecisionTree hyperparameters ---
+                # Reuse the common tree space but for the *internal* estimator
+                # i.e. "classifier__estimator__max_depth", etc.
+                **_tree_common_param_space(prefix="classifier__estimator__"),
+            },
+        },
         "AdaBoostClassifier": {
             "model_class": AdaBoostClassifier,
             "model_args": {
@@ -618,3 +661,373 @@ def get_static_model_and_search_space(
     config = model_configurations[model_name]
     model = config["model_class"](**config["model_args"])
     return model, config["param_dist"]
+
+
+def get_des_model(
+        model_name: str,
+        random_state: int | None = None,
+) -> Tuple[BaseEstimator, Dict[str, Any], Type[BaseEstimator], Dict[str, Any]]:
+    """
+    Return a DES pool configuration and the DESlib model class with defaults.
+
+    This factory centralizes everything needed to train a Dynamic Ensemble
+    Selection (DES) model in two stages:
+
+    1. **Pool tuning stage (TRAIN)**:
+       Reuses :func:`get_static_model_and_search_space` with
+       ``model_name='BaggingDecisionTreeClassifier'`` to obtain:
+
+       - a ``BaggingClassifier`` whose base estimator is a
+         ``DecisionTreeClassifier`` configured for class imbalance;
+       - its hyperparameter search space (bagging-level +
+         internal tree structure), with keys such as
+         ``"classifier__n_estimators"`` and
+         ``"classifier__estimator__max_depth"``.
+
+       You typically plug ``pool_estimator`` into the ``"classifier"`` step of
+       your standard pipeline and run hyperparameter search on ``X_train,
+       y_train``.
+
+    2. **DES fitting stage (DSEL)**:
+       Provides the DESlib estimator class and default keyword arguments so
+       that, once the pool is tuned and pre-processing is fixed, you can:
+
+       - extract the tuned bagging pool from the best pipeline
+         (e.g. ``best_pipe.named_steps["classifier"]``);
+       - use its ``estimators_`` as ``pool_classifiers`` for the DES model;
+       - instantiate the DES model as
+         ``des = des_class(pool_classifiers=pool_classifiers, **des_kwargs)``,
+         and call ``des.fit(X_dsel_trans, y_dsel)``.
+
+    Parameters
+    ----------
+    model_name : str
+        Name of the DES model. Must be one of::
+
+            {
+                "APriori",
+                "APosteriori",
+                "LCA",
+                "MLA",
+                "OLA",
+                "KNORAE",
+                "KNORAU",
+                "DESP",
+                "DESKNN",
+                "DESClustering",
+                "KNOP",
+                "DESKL",
+                "Exponential",
+                "Logarithmic",
+                "RRC",
+                "METADES",
+            }
+
+    random_state : int or None, optional
+        Random seed forwarded to the **pool** via
+        :func:`get_static_model_and_search_space`. The DES models themselves
+        are returned only as class + kwargs; if you want to control their
+        random state (when supported), you can inject it into the returned
+        ``des_kwargs`` before instantiation.
+
+    Returns
+    -------
+    pool_estimator : sklearn.ensemble.BaggingClassifier
+        Bagging ensemble whose base estimator is the class-balanced
+        ``DecisionTreeClassifier`` defined in
+        ``get_static_model_and_search_space("BaggingDecisionTreeClassifier")``.
+        This estimator is intended to be used in the ``"classifier"`` step of
+        your (Imb)Pipeline during the pool tuning stage.
+    pool_param_dist : dict
+        Hyperparameter search space for the pool, combining:
+
+        - bagging-level parameters:
+
+          - ``classifier__n_estimators``
+          - ``classifier__max_samples``
+          - ``classifier__max_features``
+
+        - internal decision-tree structure parameters with the
+          ``"classifier__estimator__"`` prefix, such as:
+
+          - ``classifier__estimator__max_depth``
+          - ``classifier__estimator__min_samples_split``
+          - ``classifier__estimator__min_samples_leaf``
+          - ``classifier__estimator__max_leaf_nodes``
+          - ``classifier__estimator__min_impurity_decrease``
+          - ``classifier__estimator__ccp_alpha``
+
+        ready to be merged with preprocessing parameters in
+        ``RandomizedSearchCV``.
+    des_class : type[sklearn.base.BaseEstimator]
+        DESlib estimator class corresponding to ``model_name`` (e.g. ``KNORAE``,
+        ``KNORAU``, ``METADES``). You will instantiate this class explicitly
+        after you have a tuned pool and DSEL features.
+    des_kwargs : dict
+        Default constructor keyword arguments for the DES model (e.g. ``k``,
+        ``DFP``, ``IH_rate``, ``voting``, ``n_jobs``). This dictionary does
+        **not** include ``pool_classifiers``; you are expected to add
+        ``pool_classifiers=<list_of_estimators>`` when instantiating the
+        DES model.
+
+    Raises
+    ------
+    ValueError
+        If ``model_name`` is not one of the supported keys.
+
+    Notes
+    -----
+    Pool requirement
+        Most DES models expect a list of **pre-fitted** base classifiers
+        via the constructor (``pool_classifiers=[...]``). The returned
+        ``pool_estimator`` is a bagging ensemble; its internal list of
+        base classifiers (``pool_estimator.estimators_``) can be passed as
+        this pool after tuning.
+
+    DSEL requirement
+        You must call ``fit(X_dsel, y_dsel)`` on the instantiated DES model
+        to build the region-of-competence structures. The DSEL set must be
+        transformed by exactly the same pre-processing used to train the pool.
+
+    Parallelism
+        ``n_jobs=-1`` is set where supported in the DES default kwargs, but
+        some classes may ignore it depending on their internal implementation.
+
+    Examples
+    --------
+    Get DES configuration for KNORAE and use it with a tuned pool:
+
+    >>> pool_estimator, pool_space, des_class, des_kwargs = get_des_model(
+    ...     "KNORAE",
+    ...     random_state=42,
+    ... )
+    >>> # 1) Use `pool_estimator` + `pool_space` inside your pipeline and tune on TRAIN.
+    >>> # 2) Extract the best tuned bagging pool:
+    """
+
+    # Pool: BaggingDecisionTreeClassifier + its search space
+    pool_estimator, pool_param_dist = get_static_model_and_search_space(
+        model_name="BaggingDecisionTreeClassifier",
+        random_state=random_state,
+    )
+
+    # DES model configuration (class + default kwargs)
+    des_model_configurations = {
+        "APriori": {
+            "model_class": APriori,
+            "model_args": {
+                "k": 8,
+                "DFP": True,
+                "IH_rate": 0.3,
+                "selection_method": "best",
+                "knn_classifier": "knn",
+                "knn_metric": "minkowski",
+                "knne": True,
+                "n_jobs": -1
+            }
+        },
+        "APosteriori": {
+            "model_class": APosteriori,
+            "model_args": {
+                "k": 8,
+                "DFP": True,
+                "IH_rate": 0.3,
+                "selection_method": "best",
+                "knn_classifier": "knn",
+                "knn_metric": "minkowski",
+                "knne": True,
+                "n_jobs": -1
+            }
+        },
+        "LCA": {
+            "model_class": LCA,
+            "model_args": {
+                "k": 8,
+                "DFP": True,
+                "IH_rate": 0.3,
+                "selection_method": "best",
+                "knn_classifier": "knn",
+                "knn_metric": "minkowski",
+                "knne": True,
+                "n_jobs": -1
+            }
+        },
+        "MLA": {
+            "model_class": MLA,
+            "model_args": {
+                "k": 8,
+                "DFP": True,
+                "IH_rate": 0.3,
+                "selection_method": "best",
+                "knn_classifier": "knn",
+                "knn_metric": "minkowski",
+                "knne": True,
+                "n_jobs": -1}
+        },
+        "OLA": {
+            "model_class": OLA,
+            "model_args": {
+                "k": 8,
+                "DFP": True,
+                "IH_rate": 0.3,
+                "selection_method": "best",
+                "knn_classifier": "knn",
+                "knn_metric": "minkowski",
+                "knne": True,
+                "n_jobs": -1
+            }
+        },
+        "KNORAE": {
+            "model_class": KNORAE,
+            "model_args": {
+                "k": 8,
+                "DFP": True,
+                "IH_rate": 0.3,
+                "knn_classifier": "knn",
+                "knn_metric": "minkowski",
+                "knne": True,
+                "n_jobs": -1,
+                "voting": "soft",
+            }
+        },
+        "KNORAU": {
+            "model_class": KNORAU,
+            "model_args": {
+                "k": 8,
+                "DFP": True,
+                "IH_rate": 0.3,
+                "knn_classifier": "knn",
+                "knn_metric": "minkowski",
+                "knne": True,
+                "n_jobs": -1,
+                "voting": "soft",
+            }
+        },
+        "DESP": {
+            "model_class": DESP,
+            "model_args": {
+                "k": 8,
+                "DFP": True,
+                "IH_rate": 0.3,
+                "knn_classifier": "knn",
+                "knn_metric": "minkowski",
+                "knne": True,
+                "n_jobs": -1,
+                "voting": "soft",
+            }
+        },
+        "DESKNN": {
+            "model_class": DESKNN,
+            "model_args": {
+                "k": 8,
+                "DFP": True,
+                "IH_rate": 0.3,
+                "pct_accuracy": 0.5,
+                "pct_diversity": 0.3,
+                "more_diverse": True,
+                "knn_classifier": "knn",
+                "knn_metric": "minkowski",
+                "knne": True,
+                "n_jobs": -1,
+                "voting": "soft",
+            }
+        },
+        "DESClustering": {
+            "model_class": DESClustering,
+            "model_args": {
+                "pct_accuracy": 0.5,
+                "pct_diversity": 0.3,
+                "more_diverse": True,
+                "metric_performance": "accuracy_score",
+                "n_clusters": 5,
+                "n_jobs": -1,
+                "voting": "soft",
+            }
+        },
+        "KNOP": {
+            "model_class": KNOP,
+            "model_args": {
+                "k": 8,
+                "DFP": True,
+                "IH_rate": 0.3,
+                "knn_classifier": "knn",
+                "knne": True,
+                "n_jobs": -1,
+                "voting": "soft",
+            }
+        },
+        "DESKL": {
+            "model_class": DESKL,
+            "model_args": {
+                "k": 8,
+                "IH_rate": 0.3,
+                "mode": "selection",
+                "knn_classifier": "knn",
+                "knn_metric": "minkowski",
+                "voting": "soft",
+                "n_jobs": -1,
+            }
+        },
+        "Exponential": {
+            "model_class": Exponential,
+            "model_args": {
+                "k": 8,
+                "DFP": True,
+                "IH_rate": 0.3,
+                "mode": "selection",
+                "knn_classifier": "knn",
+                "knn_metric": "minkowski",
+                "voting": "soft",
+                "n_jobs": -1,
+            }
+        },
+        "Logarithmic": {
+            "model_class": Logarithmic,
+            "model_args": {
+                "k": 8,
+                "DFP": True,
+                "IH_rate": 0.3,
+                "mode": "selection",
+                "knn_classifier": "knn",
+                "knn_metric": "minkowski",
+                "voting": "soft",
+                "n_jobs": -1,
+            }
+        },
+        "RRC": {
+            "model_class": RRC,
+            "model_args": {
+                "k": 8,
+                "DFP": True,
+                "IH_rate": 0.3,
+                "mode": "selection",
+                "knn_classifier": "knn",
+                "knn_metric": "minkowski",
+                "voting": "soft",
+                "n_jobs": -1,
+            }
+        },
+        "METADES": {
+            "model_class": METADES,
+            "model_args": {
+                "k": 8,
+                "DFP": True,
+                "IH_rate": 0.3,
+                "mode": "selection",
+                "knn_classifier": "knn",
+                "knn_metric": "minkowski",
+                "knne": True,
+                "n_jobs": -1,
+                "voting": "soft",
+            }
+        },
+    }
+
+    if model_name not in des_model_configurations:
+        raise ValueError(f"Unknown DES model name: {model_name}")
+
+    des_config = des_model_configurations[model_name]
+    model_class = des_config["model_class"]
+    model_args = des_config["model_args"]
+
+    return pool_estimator, pool_param_dist, model_class, model_args
