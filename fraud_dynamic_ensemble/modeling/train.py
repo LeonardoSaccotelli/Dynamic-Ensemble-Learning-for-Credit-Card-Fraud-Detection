@@ -1,4 +1,5 @@
 from pathlib import Path
+import warnings
 
 from loguru import logger
 import numpy as np
@@ -29,10 +30,22 @@ from fraud_dynamic_ensemble.config import (
     STATIC_MODELS,
 )
 from fraud_dynamic_ensemble.data_preparation.sampling import get_class_stats
-from fraud_dynamic_ensemble.modeling.utils.models import get_base_model_and_search_space
-from fraud_dynamic_ensemble.modeling.utils.pipeline import build_model_pipeline
-from fraud_dynamic_ensemble.modeling.utils.training import train_and_evaluate_one_fold_static_model
+from fraud_dynamic_ensemble.evaluation.metrics_evaluation import collect_report_one_fold
+from fraud_dynamic_ensemble.modeling.utils.models import (
+    get_des_model,
+    get_static_model_and_search_space,
+)
+from fraud_dynamic_ensemble.modeling.utils.pipeline import (
+    build_model_pipeline,
+    get_final_selected_features,
+)
+from fraud_dynamic_ensemble.modeling.utils.training import (
+    train_and_evaluate_one_fold_des_model,
+    train_and_evaluate_one_fold_static_model,
+)
 from fraud_dynamic_ensemble.utils.io_utils import save_dict_json
+
+warnings.filterwarnings("ignore", category=FutureWarning)
 
 app = typer.Typer()
 
@@ -45,6 +58,76 @@ def main(
     model_path: Path = MODELS_DIR,
     target: str = "Class",
 ):
+    """
+    Run the full training workflow (static models + DES) for the credit-card fraud project.
+
+    This Typer command:
+      1) loads the processed features CSV,
+      2) shuffles and splits features/labels,
+      3) iterates a RepeatedStratifiedKFold outer loop,
+      4) for each outer fold:
+         - tunes and evaluates each STATIC model (pipeline: scaling → feature selection → resampling → classifier),
+         - tunes a bagging pool, fits a DES model on DSEL, and evaluates the DES pipeline on the test fold,
+      5) logs and persists configuration and per-fold results as CSVs.
+
+    Parameters
+    ----------
+    input_path : pathlib.Path, default=PROCESSED_DATA_DIR / PROCESSED_FILENAME
+        Path to the **processed** dataset (CSV) containing engineered features and the target column.
+    experiment_name : str, default=EXPERIMENT_NAME
+        Human-readable experiment label used to build the run folder name.
+    experiment_description : str, default=EXPERIMENT_DESCRIPTION
+        Free-text description stored in the run’s `experiment_config.json`.
+    model_path : pathlib.Path, default=MODELS_DIR
+        Root directory where the experiment subfolder will be created and results saved.
+    target : str, default="Class"
+        Name of the target column in `input_path`.
+
+    Side Effects
+    ------------
+    - Creates/updates files under `<MODELS_DIR>/<RUN_ID>_<experiment_name>/`.
+    - Writes experiment configuration and two CSV summaries.
+    - Produces extensive logging via the configured `logger`.
+
+    Raises
+    ------
+    typer.Exit
+        If `input_path` does not exist (precondition failure).
+    ValueError
+        If requested features to standardize are not present in the dataset.
+
+    Notes
+    -----
+    Workflow
+    - **Tracking & config dump**: creates `<MODELS_DIR>/<RUN_ID>_<experiment_name>/` and writes
+      `experiment_config.json` with all key settings (CV, scaling, FS, resampling, model lists).
+    - **Data loading**: reads `input_path` CSV; logs shape and global class distribution.
+    - **Shuffle & split**: shuffles the dataset; separates `X` and `y` and converts to NumPy arrays.
+    - **Preprocessing indexes**: validates requested features to standardize and maps them to indices.
+    - **Outer CV**: `RepeatedStratifiedKFold(CV_OUTER_N_SPLITS × CV_OUTER_N_REPEATS)`.
+      For each fold:
+        * **STATIC models**:
+          - build the full pipeline with `build_model_pipeline(...)`,
+          - tune via `RandomizedSearchCV` using `get_static_model_and_search_space(...)`,
+          - evaluate with `train_and_evaluate_one_fold_static_model(...)`,
+          - extract selected features via `get_final_selected_features(...)`,
+          - collect resubstitution and test metrics with `collect_report_one_fold(...)`.
+        * **DES models**:
+          - get pool + DES via `get_des_model(...)`,
+          - build and tune the pool pipeline,
+          - split TRAIN into pool-train/DSEL, fit DES with `train_and_evaluate_one_fold_des_model(...)`,
+          - extract selected features and collect test metrics.
+    - **Persistence**: writes:
+        * `resubstitution_metrics_summary.csv`
+        * `generalization_metrics_summary.csv`
+    - Ensure the processed dataset exists (run `features.py` beforehand as indicated in logs).
+    - `feature_names` passed to `get_final_selected_features` must match the **preprocessor output
+      order**. When using `ColumnTransformer(remainder='passthrough')`, transformed columns
+      typically precede passthrough columns.
+    - Tuning can be computationally intensive; configure `N_JOBS_TUNING`, `N_ITER_TUNING`,
+      and CV splits according to available resources.
+    """
+
     logger.info("Running fraud_dynamic_ensemble/train.py ...")
 
     # --- Set experiment folder and experiment tracking
@@ -148,9 +231,7 @@ def main(
 
     for run_id, (train_idx, test_idx) in enumerate(cv_outer.split(X, y)):
         iteration_idx, fold_idx = divmod(run_id, CV_OUTER_N_SPLITS)
-        logger.info(
-            "-----------------------------------------------------------------------------"
-        )
+        print("=" * 165)
         logger.info(
             f"[ITERATION {iteration_idx + 1:2} - FOLD {fold_idx + 1:2} - RUN_ID {run_id:3}]"
         )
@@ -171,7 +252,7 @@ def main(
             logger.info(f"Training STATIC model: {static_model_name}")
 
             # Get the static model estimator and with its hyperparameter search space
-            static_model_estimator, static_model_search_space = get_base_model_and_search_space(
+            static_model_estimator, static_model_search_space = get_static_model_and_search_space(
                 static_model_name, random_state=RANDOM_STATE
             )
 
@@ -185,7 +266,7 @@ def main(
             )
 
             # Tune the static model, fit on the training folds and evaluate on the test fold
-            tuning_results, resubstitution_metrics, test_metrics = (
+            best_static_model, tuning_results, resubstitution_metrics, test_metrics = (
                 train_and_evaluate_one_fold_static_model(
                     base_model=static_model_pipeline,
                     search_space=static_model_search_space,
@@ -201,13 +282,111 @@ def main(
                 )
             )
 
+            # Extract selected feature indices and names
+            selected_indices, selected_names = get_final_selected_features(
+                pipeline=best_static_model, feature_names=features_name
+            )
 
+            # Collect resubstitution metrics and log
+            collect_report_one_fold(
+                resubstitution_metrics_summary,
+                experiment_name=experiment_name,
+                iteration=iteration_idx + 1,
+                fold=fold_idx + 1,
+                model=static_model_name,
+                metrics=resubstitution_metrics,
+                data_split="resubstitution",
+                fold_size=len(X_train),
+                **tuning_results,
+                selected_features_indices=selected_indices,
+                selected_features_names=selected_names,
+            )
 
-            print(resubstitution_metrics_summary, generalization_metrics_summary)
-            print(tuning_results, resubstitution_metrics, test_metrics)
+            # Collect generalization metrics and log
+            collect_report_one_fold(
+                generalization_metrics_summary,
+                experiment_name=experiment_name,
+                iteration=iteration_idx + 1,
+                fold=fold_idx + 1,
+                model=static_model_name,
+                metrics=test_metrics,
+                data_split="test",
+                fold_size=len(X_test),
+                selected_features_indices=selected_indices,
+                selected_features_names=selected_names,
+            )
 
-            break
-        break
+        print("-" * 165)
+
+        # ----- Start training DES MODELS -----
+        for des_model_name in DES_MODELS:
+            logger.info(f"Training DES model: {des_model_name}")
+
+            # Get the des model estimator and its configuration, with the
+            # pool of classifiers and its hyperparameter search space
+            pool_classifiers, pool_search_space, des_model_estimator, des_model_conf = (
+                get_des_model(des_model_name, random_state=RANDOM_STATE)
+            )
+
+            # Build the final pipeline: Preprocessing + Feature Selection + Resampling + Classifier
+            pool_classifiers_pipeline = build_model_pipeline(
+                estimator=pool_classifiers,
+                numerical_features_to_standardize=idx_num_features_to_standardize,
+                fs_k_best_to_keep=FS_K_BEST_TO_KEEP,
+                resampling_method=RESAMPLING_METHOD,
+                resampling_params=RESAMPLING_PARAMS,
+            )
+
+            best_des_model, test_metrics = train_and_evaluate_one_fold_des_model(
+                des_model=des_model_estimator,
+                des_conf=des_model_conf,
+                pool_classifiers=pool_classifiers_pipeline,
+                search_space=pool_search_space,
+                X_train=X_train,
+                y_train=y_train,
+                X_test=X_test,
+                y_test=y_test,
+                n_iter=N_ITER_TUNING,
+                dsel_size=DSEL_SIZE,
+                val_cv_split=CV_INNER_N_SPLITS_TUNING,
+                scoring=SCORING_TUNING,
+                random_state=RANDOM_STATE,
+                n_jobs=-N_JOBS_TUNING,
+            )
+
+            # Extract selected feature indices and names
+            selected_indices, selected_names = get_final_selected_features(
+                pipeline=best_des_model, feature_names=features_name
+            )
+
+            # Collect generalization metrics and log
+            collect_report_one_fold(
+                generalization_metrics_summary,
+                experiment_name=experiment_name,
+                iteration=iteration_idx + 1,
+                fold=fold_idx + 1,
+                model=des_model_name,
+                metrics=test_metrics,
+                data_split="test",
+                fold_size=len(X_test),
+                selected_features_indices=selected_indices,
+                selected_features_names=selected_names,
+            )
+
+        logger.success(
+            f"Completed [ITERATION {iteration_idx + 1} - FOLD {fold_idx + 1}] - RUN_ID {run_id}]"
+        )
+
+    # Store experimental results
+    resubstitution_metrics_summary = pd.DataFrame(resubstitution_metrics_summary)
+    resubstitution_metrics_summary.to_csv(
+        experiment_path / "resubstitution_metrics_summary.csv", index=False, sep=","
+    )
+
+    generalization_metrics_summary = pd.DataFrame(generalization_metrics_summary)
+    generalization_metrics_summary.to_csv(
+        experiment_path / "generalization_metrics_summary.csv", index=False, sep=","
+    )
 
     logger.success("Running fraud_dynamic_ensemble/train.py COMPLETED!")
 
