@@ -1,6 +1,7 @@
 from typing import Any, List, Mapping, Optional, Sequence, Tuple, Union
 
 from imblearn.pipeline import Pipeline as ImbPipeline
+import pandas as pd
 from sklearn.base import BaseEstimator
 from sklearn.pipeline import Pipeline
 
@@ -67,6 +68,100 @@ def build_model_pipeline(
     )
 
     return final_pipeline
+
+
+def build_standardization_and_feature_order(
+    X: pd.DataFrame,
+    numerical_features_to_standardize: Sequence[str],
+) -> Tuple[List[int], List[str], List[str]]:
+    """
+    Prepare indices and post-preprocessing feature order for standardization.
+
+    This helper performs the following steps:
+
+    1. Maps original column names to integer indices.
+    2. Validates that all requested features to standardize are present.
+    3. Builds the list of integer indices to be passed to the scaler
+       (``idx_num_features_to_standardize``).
+    4. Reconstructs the feature order **after** the preprocessing step
+       implemented by a ``ColumnTransformer`` that:
+       - applies a transformer (e.g., ``StandardScaler``) to the selected
+         columns (by index), and
+       - uses ``remainder='passthrough'`` for all remaining columns.
+
+       Under these assumptions, the transformed feature order is:
+
+       ``[scaled_features (in the order of `idx_num_features_to_standardize`),
+          all_other_features (in original column order)]``.
+
+    Parameters
+    ----------
+    X : pandas.DataFrame
+        Input features dataframe **before** preprocessing. Columns are assumed
+        to be in the original feature order.
+    numerical_features_to_standardize : sequence of str
+        Names of the features to be standardized by the scaler inside the
+        ``ColumnTransformer`` (e.g., column names from ``X.columns``).
+
+    Returns
+    -------
+    idx_num_features_to_standardize : list of int
+        Integer indices of the features to be standardized, aligned with
+        the original column order of ``X``. These indices are suitable to be
+        passed directly to the scaler in the ``ColumnTransformer``.
+    original_feature_names : list of str
+        Original feature names in the same order as ``X.columns``.
+    transformed_feature_names : list of str
+        Feature names in the **post-preprocessing** order, i.e. as seen by
+        downstream selectors (``"feature_selection_filter"``,
+        ``"feature_selection_embedded"``) when the preprocessor is a
+        ``ColumnTransformer`` with a scaler on ``idx_num_features_to_standardize``
+        and ``remainder='passthrough'``.
+
+    Raises
+    ------
+    ValueError
+        If any feature requested for standardization is not found among
+        ``X.columns``.
+
+    Notes
+    -----
+    - This function assumes that the scaler used for standardization does
+      **not** change the dimensionality (e.g., ``StandardScaler``).
+    - If your preprocessing pipeline becomes more complex (e.g., multiple
+      transformers, one-hot encoding), consider switching to
+      ``preprocessor.get_feature_names_out()`` instead of reconstructing
+      the order manually.
+    """
+    # Original feature names and name -> index mapping
+    original_feature_names = X.columns.tolist()
+    features_index = {name: idx for idx, name in enumerate(original_feature_names)}
+
+    # Check that all requested features to standardize are present
+    missing_features = set(numerical_features_to_standardize) - features_index.keys()
+    if missing_features:
+        raise ValueError(
+            f"The following features requested for standardization were not "
+            f"found in the dataset columns: {missing_features}.\n"
+            f"Available features: {original_feature_names}"
+        )
+
+    # Map feature names to integer indices (for ColumnTransformer by index)
+    idx_num_features_to_standardize = [
+        features_index[name] for name in numerical_features_to_standardize
+    ]
+
+    # Build post-preprocessing feature order:
+    # scaled features first, then all remaining features in original order.
+    n_features = len(original_feature_names)
+    scaled_indices = list(idx_num_features_to_standardize)
+    passthrough_indices = [i for i in range(n_features) if i not in scaled_indices]
+
+    transformed_feature_names = [original_feature_names[i] for i in scaled_indices] + [
+        original_feature_names[i] for i in passthrough_indices
+    ]
+
+    return idx_num_features_to_standardize, original_feature_names, transformed_feature_names
 
 
 def get_final_selected_features(
