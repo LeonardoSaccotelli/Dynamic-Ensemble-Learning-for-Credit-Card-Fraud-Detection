@@ -119,7 +119,7 @@ def train_and_evaluate_one_fold_static_model(
         refit=True,
         cv=splitter,
         verbose=3,
-        random_state=None,
+        random_state=random_state,
         return_train_score=True,
     )
 
