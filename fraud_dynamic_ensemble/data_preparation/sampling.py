@@ -637,33 +637,33 @@ def get_resampling_pipeline(
     >>> sampler = get_resampling_pipeline("none")
     >>> pipe = ImbPipeline([("resample", sampler), ("clf", ...)])  # resample step is a passthrough
     """
-    name = "none" if strategy_name is None else strategy_name.strip().lower()
+    name = "none" if strategy_name is None else strategy_name
 
     registry: Dict[str, Type] = {
         # Undersampling
-        "randomundersampler": RandomUnderSampler,
-        "nearmiss": NearMiss,
-        "tomeklinks": TomekLinks,
-        "editednearestneighbours": EditedNearestNeighbours,
-        "repeatededitednearestneighbours": RepeatedEditedNearestNeighbours,
-        "allknn": AllKNN,
-        "condensednearestneighbour": CondensedNearestNeighbour,
-        "onesidedselection": OneSidedSelection,
-        "neighbourhoodcleaningrule": NeighbourhoodCleaningRule,
-        "instancehardnessthreshold": InstanceHardnessThreshold,
-        "clustercentroids": ClusterCentroids,
+        "RandomUnderSampler": RandomUnderSampler,
+        "NearMiss": NearMiss,
+        "TomekLinks": TomekLinks,
+        "EditedNearestNeighbours": EditedNearestNeighbours,
+        "RepeatedEditedNearestNeighbours": RepeatedEditedNearestNeighbours,
+        "AllKNN": AllKNN,
+        "CondensedNearestNeighbour": CondensedNearestNeighbour,
+        "OneSidedSelection": OneSidedSelection,
+        "NeighbourhoodCleaningRule": NeighbourhoodCleaningRule,
+        "InstanceHardnessThreshold": InstanceHardnessThreshold,
+        "ClusterCentroids": ClusterCentroids,
         # Oversampling
-        "randomoversampler": RandomOverSampler,
-        "smote": SMOTE,
-        "smotenc": SMOTENC,
-        "smoten": SMOTEN,
-        "adasyn": ADASYN,
-        "borderlinesmote": BorderlineSMOTE,
-        "kmeanssmote": KMeansSMOTE,
-        "svmsmote": SVMSMOTE,
+        "RandomOverSampler": RandomOverSampler,
+        "SMOTE": SMOTE,
+        "SMOTENC": SMOTENC,
+        "SMOTEN": SMOTEN,
+        "ADASYN": ADASYN,
+        "BorderlineSMOTE": BorderlineSMOTE,
+        "KMeansSMOTE": KMeansSMOTE,
+        "SVMSMOTE": SVMSMOTE,
         # Hybrid
-        "smoteenn": SMOTEENN,
-        "smotetomek": SMOTETomek,
+        "SMOTEENN": SMOTEENN,
+        "SMOTETomek": SMOTETomek,
     }
 
     if name in {"none", "passthrough"}:
