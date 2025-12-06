@@ -37,6 +37,7 @@ from fraud_dynamic_ensemble.modeling.utils.models import (
 )
 from fraud_dynamic_ensemble.modeling.utils.pipeline import (
     build_model_pipeline,
+    build_standardization_and_feature_order,
     get_final_selected_features,
 )
 from fraud_dynamic_ensemble.modeling.utils.training import (
@@ -190,25 +191,20 @@ def main(
         f"Shape of X: {X.shape} - Shape of y: {y.shape}"
     )
 
-    # Map column names to their corresponding indices
-    features_name = X.columns.tolist()
-    features_index = {name: idx for idx, name in enumerate(features_name)}
+    # Prepare standardization indices and post-preprocessing feature order
+    (
+        idx_num_features_to_standardize,
+        features_name,
+        transformed_feature_names,
+    ) = build_standardization_and_feature_order(
+        X=X,
+        numerical_features_to_standardize=NUMERICAL_FEATURES_TO_STANDARDIZE,
+    )
 
-    # Check if the requested features to standardize are available in the dataset
-    missing_feature_to_standardize = set(NUMERICAL_FEATURES_TO_STANDARDIZE) - features_index.keys()
-    if missing_feature_to_standardize:
-        raise ValueError(
-            f"The following features requested for standardization were not "
-            f"found in the features_index: {missing_feature_to_standardize}.\n"
-            f"Available features: {features_name}"
-        )
-
-    # Convert the list of features name to indices for use in Feature Selection pipeline
-    idx_num_features_to_standardize = [
-        features_index[idx] for idx in NUMERICAL_FEATURES_TO_STANDARDIZE
-    ]
     logger.info(
-        f"Features to standardize: name={NUMERICAL_FEATURES_TO_STANDARDIZE} - idx_col={idx_num_features_to_standardize}"
+        "Features to standardize: name=%s - idx_col=%s",
+        NUMERICAL_FEATURES_TO_STANDARDIZE,
+        idx_num_features_to_standardize,
     )
 
     # Convert dataset from pandas dataframe to a numpy array for compatibility  with deslib
@@ -284,7 +280,7 @@ def main(
 
             # Extract selected feature indices and names
             selected_indices, selected_names = get_final_selected_features(
-                pipeline=best_static_model, feature_names=features_name
+                pipeline=best_static_model, feature_names=transformed_feature_names
             )
 
             # Collect resubstitution metrics and log
@@ -356,7 +352,7 @@ def main(
 
             # Extract selected feature indices and names
             selected_indices, selected_names = get_final_selected_features(
-                pipeline=best_des_model, feature_names=features_name
+                pipeline=best_des_model, feature_names=transformed_feature_names
             )
 
             # Collect generalization metrics and log
