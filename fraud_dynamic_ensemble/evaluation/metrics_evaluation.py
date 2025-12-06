@@ -193,9 +193,9 @@ def collect_report_one_fold(
     experiment_name : str
         Name/identifier of the experiment (e.g., ``"baseline-v1"``).
     iteration : int
-        0-based outer repetition index.
+        1-based outer repetition index.
     fold : int
-        0-based fold index within the current iteration.
+        1-based fold index within the current iteration.
     model : str
         Model (or pipeline) name.
     metrics : dict[str, float]
