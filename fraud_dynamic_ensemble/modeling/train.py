@@ -8,7 +8,6 @@ from sklearn.model_selection import RepeatedStratifiedKFold
 import typer
 
 from fraud_dynamic_ensemble.config import (
-    CV_INNER_N_SPLITS_TUNING,
     CV_OUTER_N_REPEATS,
     CV_OUTER_N_SPLITS,
     DES_MODELS,
@@ -18,16 +17,21 @@ from fraud_dynamic_ensemble.config import (
     EXPERIMENT_RUN_ID,
     FS_K_BEST_TO_KEEP,
     MODELS_DIR,
-    N_ITER_TUNING,
-    N_JOBS_TUNING,
     NUMERICAL_FEATURES_TO_STANDARDIZE,
     PROCESSED_DATA_DIR,
     PROCESSED_FILENAME,
     RANDOM_STATE,
     RESAMPLING_METHOD,
     RESAMPLING_PARAMS,
-    SCORING_TUNING,
     STATIC_MODELS,
+    TUNING_AGGRESSIVE_ELIMINATION,
+    TUNING_CV_INNER_N_SPLITS,
+    TUNING_FACTOR,
+    TUNING_MAX_RESOURCES,
+    TUNING_MIN_RESOURCES,
+    TUNING_N_CANDIDATES,
+    TUNING_N_JOBS,
+    TUNING_SCORING,
 )
 from fraud_dynamic_ensemble.data_preparation.sampling import get_class_stats
 from fraud_dynamic_ensemble.evaluation.metrics_evaluation import collect_report_one_fold
@@ -144,10 +148,14 @@ def main(
         "resampling_params": RESAMPLING_PARAMS,
         "outer_evaluation_loop": f"RepeatedStratifiedKFold_{CV_OUTER_N_REPEATS}_times_{CV_OUTER_N_SPLITS}_folds",
         "DSEL_size": DSEL_SIZE,
-        "inner_evaluation_hyperparameters_tuning_n_iter": N_ITER_TUNING,
-        "inner_evaluation_hyperparameters_tuning_cv_splits": CV_INNER_N_SPLITS_TUNING,
-        "inner_evaluation_hyperparameters_tuning_scoring": SCORING_TUNING,
-        "inner_evaluation_hyperparameters_tuning_n_jobs": N_JOBS_TUNING,
+        "tuning_hyperparameters_n_candidates": TUNING_N_CANDIDATES,
+        "tuning_hyperparameters_cv_splits": TUNING_CV_INNER_N_SPLITS,
+        "tuning_hyperparameters_scoring": TUNING_SCORING,
+        "tuning_hyperparameters_n_jobs": TUNING_N_JOBS,
+        "tuning_hyperparameters_factor": TUNING_FACTOR,
+        "tuning_hyperparameters_min_resources": TUNING_MIN_RESOURCES,
+        "tuning_hyperparameters_max_resources": TUNING_MAX_RESOURCES,
+        "tuning_hyperparameters_aggressive_elimination": TUNING_AGGRESSIVE_ELIMINATION,
         "models_to_train": STATIC_MODELS,
         "des_models_to_train": DES_MODELS,
     }
@@ -270,11 +278,15 @@ def main(
                     y_train=y_train,
                     X_test=X_test,
                     y_test=y_test,
-                    n_iter=N_ITER_TUNING,
-                    val_cv_split=CV_INNER_N_SPLITS_TUNING,
-                    scoring=SCORING_TUNING,
+                    n_candidates=TUNING_N_CANDIDATES,
+                    factor=TUNING_FACTOR,
+                    min_resources=TUNING_MIN_RESOURCES,
+                    max_resources=TUNING_MAX_RESOURCES,
+                    aggressive_elimination=TUNING_AGGRESSIVE_ELIMINATION,
+                    val_cv_split=TUNING_CV_INNER_N_SPLITS,
+                    scoring=TUNING_SCORING,
                     random_state=RANDOM_STATE,
-                    n_jobs=-N_JOBS_TUNING,
+                    n_jobs=TUNING_N_JOBS,
                 )
             )
 
@@ -342,12 +354,16 @@ def main(
                 y_train=y_train,
                 X_test=X_test,
                 y_test=y_test,
-                n_iter=N_ITER_TUNING,
+                n_candidates=TUNING_N_CANDIDATES,
+                factor=TUNING_FACTOR,
+                min_resources=TUNING_MIN_RESOURCES,
+                max_resources=TUNING_MAX_RESOURCES,
+                aggressive_elimination=TUNING_AGGRESSIVE_ELIMINATION,
                 dsel_size=DSEL_SIZE,
-                val_cv_split=CV_INNER_N_SPLITS_TUNING,
-                scoring=SCORING_TUNING,
+                val_cv_split=TUNING_CV_INNER_N_SPLITS,
+                scoring=TUNING_SCORING,
                 random_state=RANDOM_STATE,
-                n_jobs=-N_JOBS_TUNING,
+                n_jobs=TUNING_N_JOBS,
             )
 
             # Extract selected feature indices and names
