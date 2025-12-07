@@ -2,7 +2,6 @@ from pathlib import Path
 import warnings
 
 from loguru import logger
-import numpy as np
 import pandas as pd
 from sklearn.model_selection import RepeatedStratifiedKFold
 import typer
@@ -34,19 +33,11 @@ from fraud_dynamic_ensemble.config import (
     TUNING_SCORING,
 )
 from fraud_dynamic_ensemble.data_preparation.sampling import get_class_stats
-from fraud_dynamic_ensemble.evaluation.metrics_evaluation import collect_report_one_fold
-from fraud_dynamic_ensemble.modeling.utils.models import (
-    get_des_model,
-    get_static_model_and_search_space,
-)
 from fraud_dynamic_ensemble.modeling.utils.pipeline import (
-    build_model_pipeline,
     build_standardization_and_feature_order,
-    get_final_selected_features,
 )
 from fraud_dynamic_ensemble.modeling.utils.training import (
-    train_and_evaluate_one_fold_des_model,
-    train_and_evaluate_one_fold_static_model,
+    train_and_evaluate_one_fold_all_models,
 )
 from fraud_dynamic_ensemble.utils.io_utils import save_dict_json
 
@@ -230,7 +221,7 @@ def main(
     resubstitution_metrics_summary = []
     generalization_metrics_summary = []
 
-    ################################# START TRAINING PHASE #################################
+    ################################# START TRAINING PHASE #########################################
     logger.info("Starting training.py models...")
 
     for run_id, (train_idx, test_idx) in enumerate(cv_outer.split(X, y)):
@@ -240,156 +231,38 @@ def main(
             f"[ITERATION {iteration_idx + 1:2} - FOLD {fold_idx + 1:2} - RUN_ID {run_id:3}]"
         )
 
-        # Split the data into training.py set (9 training.py folds) and test set (1 test fold)
-        X_train, X_test = X[train_idx], X[test_idx]
-        y_train, y_test = y[train_idx], y[test_idx]
-
-        # Report class balance statistics for iteration
-        for name, target in zip(["train dataset", "test dataset"], [y_train, y_test]):
-            unique, frequency = np.unique(target, return_counts=True)
-            logger.info(
-                f"Class distribution ({name} statistics) [class, frequency]: {unique, frequency}"
-            )
-
-        # ----- Start training STATIC MODELS -----
-        for static_model_name in STATIC_MODELS:
-            logger.info(f"Training STATIC model: {static_model_name}")
-
-            # Get the static model estimator and with its hyperparameter search space
-            static_model_estimator, static_model_search_space = get_static_model_and_search_space(
-                static_model_name, random_state=RANDOM_STATE
-            )
-
-            # Build the final pipeline: Preprocessing + Feature Selection + Resampling + Classifier
-            static_model_pipeline = build_model_pipeline(
-                estimator=static_model_estimator,
-                numerical_features_to_standardize=idx_num_features_to_standardize,
-                fs_k_best_to_keep=FS_K_BEST_TO_KEEP,
-                resampling_method=RESAMPLING_METHOD,
-                resampling_params=RESAMPLING_PARAMS,
-            )
-
-            # Tune the static model, fit on the training folds and evaluate on the test fold
-            best_static_model, tuning_results, resubstitution_metrics, test_metrics = (
-                train_and_evaluate_one_fold_static_model(
-                    base_model=static_model_pipeline,
-                    search_space=static_model_search_space,
-                    X_train=X_train,
-                    y_train=y_train,
-                    X_test=X_test,
-                    y_test=y_test,
-                    n_candidates=TUNING_N_CANDIDATES,
-                    factor=TUNING_FACTOR,
-                    min_resources=TUNING_MIN_RESOURCES,
-                    max_resources=TUNING_MAX_RESOURCES,
-                    aggressive_elimination=TUNING_AGGRESSIVE_ELIMINATION,
-                    val_cv_split=TUNING_CV_INNER_N_SPLITS,
-                    scoring=TUNING_SCORING,
-                    random_state=RANDOM_STATE,
-                    n_jobs=TUNING_N_JOBS,
-                )
-            )
-
-            # Extract selected feature indices and names
-            selected_indices, selected_names = get_final_selected_features(
-                pipeline=best_static_model, feature_names=transformed_feature_names
-            )
-
-            # Collect resubstitution metrics and log
-            collect_report_one_fold(
-                resubstitution_metrics_summary,
-                experiment_name=experiment_name,
-                iteration=iteration_idx + 1,
-                fold=fold_idx + 1,
-                model=static_model_name,
-                metrics=resubstitution_metrics,
-                data_split="resubstitution",
-                fold_size=len(X_train),
-                **tuning_results,
-                selected_features_indices=selected_indices,
-                selected_features_names=selected_names,
-            )
-
-            # Collect generalization metrics and log
-            collect_report_one_fold(
-                generalization_metrics_summary,
-                experiment_name=experiment_name,
-                iteration=iteration_idx + 1,
-                fold=fold_idx + 1,
-                model=static_model_name,
-                metrics=test_metrics,
-                data_split="test",
-                fold_size=len(X_test),
-                selected_features_indices=selected_indices,
-                selected_features_names=selected_names,
-            )
-
-        print("-" * 165)
-
-        # ----- Start training DES MODELS -----
-        for des_model_name in DES_MODELS:
-            logger.info(f"Training DES model: {des_model_name}")
-
-            # Get the des model estimator and its configuration, with the
-            # pool of classifiers and its hyperparameter search space
-            pool_classifiers, pool_search_space, des_model_estimator, des_model_conf = (
-                get_des_model(des_model_name, random_state=RANDOM_STATE)
-            )
-
-            # Build the final pipeline: Preprocessing + Feature Selection + Resampling + Classifier
-            pool_classifiers_pipeline = build_model_pipeline(
-                estimator=pool_classifiers,
-                numerical_features_to_standardize=idx_num_features_to_standardize,
-                fs_k_best_to_keep=FS_K_BEST_TO_KEEP,
-                resampling_method=RESAMPLING_METHOD,
-                resampling_params=RESAMPLING_PARAMS,
-            )
-
-            best_des_model, test_metrics = train_and_evaluate_one_fold_des_model(
-                des_model=des_model_estimator,
-                des_conf=des_model_conf,
-                pool_classifiers=pool_classifiers_pipeline,
-                search_space=pool_search_space,
-                X_train=X_train,
-                y_train=y_train,
-                X_test=X_test,
-                y_test=y_test,
-                n_candidates=TUNING_N_CANDIDATES,
-                factor=TUNING_FACTOR,
-                min_resources=TUNING_MIN_RESOURCES,
-                max_resources=TUNING_MAX_RESOURCES,
-                aggressive_elimination=TUNING_AGGRESSIVE_ELIMINATION,
-                dsel_size=DSEL_SIZE,
-                val_cv_split=TUNING_CV_INNER_N_SPLITS,
-                scoring=TUNING_SCORING,
-                random_state=RANDOM_STATE,
-                n_jobs=TUNING_N_JOBS,
-            )
-
-            # Extract selected feature indices and names
-            selected_indices, selected_names = get_final_selected_features(
-                pipeline=best_des_model, feature_names=transformed_feature_names
-            )
-
-            # Collect generalization metrics and log
-            collect_report_one_fold(
-                generalization_metrics_summary,
-                experiment_name=experiment_name,
-                iteration=iteration_idx + 1,
-                fold=fold_idx + 1,
-                model=des_model_name,
-                metrics=test_metrics,
-                data_split="test",
-                fold_size=len(X_test),
-                selected_features_indices=selected_indices,
-                selected_features_names=selected_names,
-            )
-
-        logger.success(
-            f"Completed [ITERATION {iteration_idx + 1} - FOLD {fold_idx + 1}] - RUN_ID {run_id}]"
+        resubstitution_rows, generalization_rows = train_and_evaluate_one_fold_all_models(
+            run_id=run_id,
+            iteration_idx=iteration_idx,
+            fold_idx=fold_idx,
+            train_idx=train_idx,
+            test_idx=test_idx,
+            X=X,
+            y=y,
+            experiment_name=experiment_name,
+            idx_num_features_to_standardize=idx_num_features_to_standardize,
+            transformed_feature_names=transformed_feature_names,
+            static_models=STATIC_MODELS,
+            des_models=DES_MODELS,
+            fs_k_best_to_keep=FS_K_BEST_TO_KEEP,
+            resampling_method=RESAMPLING_METHOD,
+            resampling_params=RESAMPLING_PARAMS,
+            tuning_n_candidates=TUNING_N_CANDIDATES,
+            tuning_factor=TUNING_FACTOR,
+            tuning_min_resources=TUNING_MIN_RESOURCES,
+            tuning_max_resources=TUNING_MAX_RESOURCES,
+            tuning_aggressive_elimination=TUNING_AGGRESSIVE_ELIMINATION,
+            tuning_cv_inner_n_splits=TUNING_CV_INNER_N_SPLITS,
+            tuning_scoring=TUNING_SCORING,
+            tuning_n_jobs=TUNING_N_JOBS,
+            dsel_size=DSEL_SIZE,
+            random_state=RANDOM_STATE,
         )
 
-    # Store experimental results
+        resubstitution_metrics_summary.extend(resubstitution_rows)
+        generalization_metrics_summary.extend(generalization_rows)
+
+    ############################### STORE EXPERIMENTAL RESULTS #####################################
     resubstitution_metrics_summary = pd.DataFrame(resubstitution_metrics_summary)
     resubstitution_metrics_summary.to_csv(
         experiment_path / "resubstitution_metrics_summary.csv", index=False, sep=","
