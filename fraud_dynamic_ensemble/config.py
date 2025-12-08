@@ -57,13 +57,14 @@ NUMERICAL_FEATURES_TO_STANDARDIZE = ["Amount_log1p"]
 FS_K_BEST_TO_KEEP = 25
 
 # resampling method
+USE_COST_SENSITIVE_LEARNING = False
 RESAMPLING_METHOD = None
 RESAMPLING_PARAMS = {}
 
 # outer evaluation setting: RepeatedStratifiedKFold (10 x 10)
 CV_OUTER_N_SPLITS = 10
 CV_OUTER_N_REPEATS = 10
-CV_OUTER_PARALLEL_N_JOBS = 100
+CV_OUTER_PARALLEL_N_JOBS = 1
 
 # inner evaluation setting for dynamical ensemble models
 DSEL_SIZE = 0.15
