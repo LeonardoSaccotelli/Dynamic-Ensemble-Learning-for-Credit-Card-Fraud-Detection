@@ -520,6 +520,7 @@ def train_and_evaluate_one_fold_all_models(
     static_models: Sequence[str],
     des_models: Sequence[str],
     fs_k_best_to_keep: int | str,
+    use_cost_sensitive_learning: bool,
     resampling_method: str | None,
     resampling_params: Dict[str, Any] | None,
     tuning_n_candidates: int,
@@ -588,6 +589,17 @@ def train_and_evaluate_one_fold_all_models(
     fs_k_best_to_keep : int or {"all"}
         Number of features retained by ``SelectKBest``. Use ``"all"`` to
         keep all features.
+    use_cost_sensitive_learning : bool
+        Whether to enable cost-sensitive / imbalance-aware behaviour in both
+        STATIC models and DES pools. This flag is forwarded to:
+
+        - :func:`get_static_model_and_search_space` for each static model, and
+        - :func:`get_des_model` for each DES pool.
+
+        When ``True``, models that support it are configured with imbalance-aware
+        defaults (e.g. ``class_weight='balanced'``, tuned ``scale_pos_weight`` in
+        XGBoost, imbalanced-learn samplers/ensembles). When ``False``, those
+        mechanisms are disabled where possible.
     resampling_method : str or None
         Canonical name of the resampling strategy (e.g. ``"SMOTE"``,
         ``"RandomUnderSampler"``, ``"SMOTEENN"``) or ``None``/``"none"``
@@ -676,6 +688,7 @@ def train_and_evaluate_one_fold_all_models(
                 static_models=["SVC", "RandomForestClassifier"],
                 des_models=["KNORAE"],
                 fs_k_best_to_keep=20,
+                use_cost_sensitive_learning=True,
                 resampling_method="SMOTE",
                 resampling_params={"sampling_strategy": 0.2, "random_state": 42},
                 tuning_n_candidates=35,
@@ -715,6 +728,7 @@ def train_and_evaluate_one_fold_all_models(
         static_model_estimator, static_model_search_space = get_static_model_and_search_space(
             static_model_name,
             random_state=random_state,
+            use_cost_sensitive_learning=use_cost_sensitive_learning
         )
 
         # Build the final pipeline: Preprocessing + Feature Selection + Resampling + Classifier
@@ -795,6 +809,7 @@ def train_and_evaluate_one_fold_all_models(
         pool_classifiers, pool_search_space, des_model_estimator, des_model_conf = get_des_model(
             des_model_name,
             random_state=random_state,
+            use_cost_sensitive_learning=use_cost_sensitive_learning
         )
 
         # Build the final pipeline: Preprocessing + Feature Selection + Resampling + Classifier
