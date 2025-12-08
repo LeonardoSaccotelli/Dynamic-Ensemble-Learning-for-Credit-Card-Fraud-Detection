@@ -187,20 +187,23 @@ def _boosting_core_param_space(
 
 
 def get_static_model_and_search_space(
-    model_name: str, random_state: int | None = None
+        model_name: str,
+        random_state: int | None = None,
+        use_cost_sensitive_learning: bool = True
 ) -> tuple[BaseEstimator, Dict[str, Any]]:
     """
-    Return a classifier instance and its hyperparameter search space.
+    Build a classifier instance and its hyperparameter search space.
 
-    This factory builds a scikit-learn / imbalanced-learn / XGBoost estimator
-    (configured with sensible defaults for class imbalance where applicable)
-    together with a parameter distribution dictionary intended for use with
-    ``RandomizedSearchCV``.
+    This factory constructs a scikit-learn / imbalanced-learn / XGBoost
+    estimator (optionally configured for cost-sensitive learning on
+    imbalanced data) together with a parameter distribution dictionary
+    intended for use with CV-based hyperparameter search, such as
+    ``RandomizedSearchCV`` or ``HalvingRandomSearchCV``.
 
     The parameter names in the returned ``param_dist`` assume that your
     estimator is wrapped in a scikit-learn ``Pipeline`` step called
-    ``"classifier"``, so hyperparameters are prefixed with
-    ``"classifier__"`` (e.g. ``"classifier__C"``).
+    ``"classifier"``, so all hyperparameters are prefixed with
+    ``"classifier__"`` (e.g. ``"classifier__C"``, ``"classifier__n_estimators"``).
 
     Parameters
     ----------
@@ -227,15 +230,42 @@ def get_static_model_and_search_space(
         gradient boosting, XGBoost, imbalanced-learn ensembles). If ``None``,
         models use their library default.
 
+    use_cost_sensitive_learning : bool, default=True
+        If ``True``, models are configured (where applicable) to handle
+        class imbalance via:
+
+        - ``class_weight='balanced'`` or ``'balanced_subsample'`` for many
+          tree-based classifiers.
+        - Internal resampling in imbalanced-learn models such as
+          ``BalancedRandomForestClassifier`` and ``RUSBoostClassifier`` via
+          ``sampling_strategy``.
+        - Tuning of ``scale_pos_weight`` in ``XGBClassifier``.
+
+        If ``False``, these cost-sensitive mechanisms are disabled:
+
+        - Any ``class_weight`` present in the model arguments is set to
+          ``None`` (including the internal tree in the
+          ``BaggingDecisionTreeClassifier``).
+        - For ``XGBClassifier``, ``classifier__scale_pos_weight`` is removed
+          from the search space and ``scale_pos_weight`` is fixed to ``1.0``.
+        - For imbalanced-learn models that define ``sampling_strategy``
+          (e.g., ``BalancedRandomForestClassifier``, ``RUSBoostClassifier``),
+          it is set to ``None``.
+        - For ``BalancedRandomForestClassifier``, both internal resampling
+          and ``class_weight`` are disabled, making it behave closer to a
+          standard ``RandomForestClassifier`` (with some overhead from the
+          wrapper class).
+
     Returns
     -------
     estimator : sklearn.base.BaseEstimator
         The configured classifier instance (not fitted).
     param_dist : dict
         Mapping of hyperparameter names to SciPy distributions or lists,
-        suitable for ``RandomizedSearchCV(param_distributions=...)``.
-        All names are prefixed with ``"classifier__"`` to match a Pipeline
-        step named ``"classifier"``.
+        suitable for ``RandomizedSearchCV`` or ``HalvingRandomSearchCV``
+        (via the ``param_distributions=...`` argument). All names are
+        prefixed with ``"classifier__"`` to match a Pipeline step named
+        ``"classifier"``.
 
     Raises
     ------
@@ -247,12 +277,12 @@ def get_static_model_and_search_space(
 
     Notes
     -----
-    Imbalance handling
+    Imbalance handling (when ``use_cost_sensitive_learning=True``)
         - Many tree-based models are initialized with
-          ``class_weight='balanced'``.
+          ``class_weight='balanced'`` or ``'balanced_subsample'``.
         - ``BalancedRandomForestClassifier`` and ``RUSBoostClassifier``
-          (from imbalanced-learn) perform internal resampling; for BRF
-          the default ``sampling_strategy='all'`` is used.
+          (from imbalanced-learn) perform internal resampling via
+          ``sampling_strategy``.
         - ``XGBClassifier`` includes ``scale_pos_weight`` in the search
           space to handle strong class imbalance.
 
@@ -310,7 +340,8 @@ def get_static_model_and_search_space(
           (``max_depth``, ``min_child_weight``), stochasticity
           (``subsample``, ``colsample_bytree``), regularization
           (``reg_alpha``, ``reg_lambda``, ``gamma``), and
-          ``scale_pos_weight`` for class imbalance.
+          ``scale_pos_weight`` for class imbalance (unless explicitly
+          disabled via ``use_cost_sensitive_learning=False``).
 
     Pipeline naming
         The returned ``param_dist`` assumes that the estimator is wrapped in
@@ -319,7 +350,8 @@ def get_static_model_and_search_space(
         ``Pipeline([('classifier', <estimator>)])``
 
         so that all hyperparameters can be referenced as
-        ``"classifier__<param_name>"`` in ``RandomizedSearchCV``.
+        ``"classifier__<param_name>"`` in ``RandomizedSearchCV`` or
+        ``HalvingRandomSearchCV``.
 
     Examples
     --------
@@ -342,11 +374,12 @@ def get_static_model_and_search_space(
     ...     n_jobs=-1,
     ... )
 
-    Swap to XGBoost with the same interface:
+    Switch to XGBoost with the same interface, disabling cost-sensitive tweaks:
 
     >>> clf, space = get_static_model_and_search_space(
     ...     'XGBClassifier',
     ...     random_state=42,
+    ...     use_cost_sensitive_learning=False,
     ... )
     >>> pipe = Pipeline([('classifier', clf)])
     >>> search = RandomizedSearchCV(
@@ -655,13 +688,45 @@ def get_static_model_and_search_space(
         raise ValueError(f"Unknown model name: {model_name}")
 
     config = model_configurations[model_name]
+
+    if not use_cost_sensitive_learning:
+        # Standard Sklearn 'class_weight' (SVC, RF, DT, ExtraTrees)
+        if "class_weight" in config["model_args"]:
+            config["model_args"]["class_weight"] = None
+
+        # Nested Estimator (BaggingClassifier)
+        if model_name == "BaggingDecisionTreeClassifier":
+            # Set the internal tree's weights to None
+            config["model_args"]["estimator"].class_weight = None
+
+        # XGBClassifier (scale_pos_weight)
+        if model_name == "XGBClassifier":
+            # Remove from search space to prevent tuning it
+            if "classifier__scale_pos_weight" in config["param_dist"]:
+                del config["param_dist"]["classifier__scale_pos_weight"]
+            # Force default behavior (1.0 = equal weight)
+            config["model_args"]["scale_pos_weight"] = 1.0
+
+        # Imbalanced-Learn Models (BalancedRF, RUSBoost)
+        # If cost sensitivity is off, we disable the internal resampling strategy.
+        if "sampling_strategy" in config["model_args"]:
+            config["model_args"]["sampling_strategy"] = None
+
+        # BalancedRF specific: if we turn off sampling, it behaves like a standard RF
+        # but with the overhead of the BalancedRF class structure.
+        if model_name == "BalancedRandomForestClassifier":
+            if "class_weight" in config["model_args"]:
+                config["model_args"]["class_weight"] = None
+
     model = config["model_class"](**config["model_args"])
+
     return model, config["param_dist"]
 
 
 def get_des_model(
-    model_name: str,
-    random_state: int | None = None,
+        model_name: str,
+        random_state: int | None = None,
+        use_cost_sensitive_learning: bool = True,
 ) -> Tuple[BaseEstimator, Dict[str, Any], BaseEstimator, Dict[str, Any]]:
     """
     Build the **pool (bagging) configuration** and an **unfitted DESlib model**
@@ -674,12 +739,16 @@ def get_des_model(
          you can apply later (e.g., via ``set_params``) together with the tuned pool.
 
     The typical two-stage process is:
-      - **Pool tuning (TRAIN)**: plug ``pool_estimator`` into your pipeline,
-        tune it with ``pool_param_dist`` on the training data, and extract the
-        tuned bagger (e.g., ``best_pipe.named_steps["classifier"]``).
-      - **DES fitting (DSEL)**: attach the tuned pool to the returned ``des_model``
-        (e.g., ``des_model.set_params(pool_classifiers=fitted_pool)``), then fit on
-        preprocessed DSEL data.
+
+    1. **Pool tuning (TRAIN)**:
+       plug ``pool_estimator`` into your pipeline, tune it with
+       ``pool_param_dist`` on the training data, and extract the tuned bagger
+       (e.g., ``best_pipe.named_steps["classifier"]``).
+
+    2. **DES fitting (DSEL)**:
+       inject the tuned pool into the returned ``des_model`` via
+       ``des_model.set_params(pool_classifiers=fitted_pool)``, then fit it on
+       preprocessed DSEL data.
 
     Parameters
     ----------
@@ -693,28 +762,40 @@ def get_des_model(
         The DES instance itself is created with library defaults; if you need to
         control its randomness (when supported), apply ``des_kwargs`` via
         ``des_model.set_params(**des_kwargs)`` or pass overrides manually.
+    use_cost_sensitive_learning : bool, default=True
+        Whether to configure the **pool** for cost-sensitive learning on
+        imbalanced data. This flag is passed directly to
+        :func:`get_static_model_and_search_space("BaggingDecisionTreeClassifier")`:
+
+        - If ``True``, the internal ``DecisionTreeClassifier`` and the bagging
+          ensemble are configured with imbalance-aware defaults (e.g.,
+          ``class_weight='balanced'``).
+        - If ``False``, the bagging pool is built without cost-sensitive tweaks
+          (no class weights, no internal imbalance heuristics).
 
     Returns
     -------
     pool_estimator : sklearn.ensemble.BaggingClassifier
-        Bagging ensemble configured for imbalanced data (base estimator is a
-        class-weighted ``DecisionTreeClassifier``). Use in your pipeline's
+        Bagging ensemble configured (optionally) for imbalanced data. The base
+        estimator is a ``DecisionTreeClassifier``; use this in your pipeline's
         ``"classifier"`` step during the pool tuning stage.
     pool_param_dist : dict
         Hyperparameter search space for the pool, including bagging-level params
         (e.g., ``classifier__n_estimators``, ``classifier__max_samples``,
         ``classifier__max_features``) and internal tree params
         (e.g., ``classifier__estimator__max_depth``, ``...__min_samples_leaf``,
-        ``...__ccp_alpha``).
+        ``...__ccp_alpha``). Suitable for use with ``RandomizedSearchCV`` or
+        ``HalvingRandomSearchCV`` via the ``param_distributions=...`` argument.
     des_model : sklearn.base.BaseEstimator
-        **Unfitted** DESlib estimator instance (e.g., ``KNORAE``). Created with
-        library defaults (no kwargs applied yet). You are expected to inject the
-        tuned pool later with:
+        **Unfitted** DESlib estimator instance (e.g., ``KNORAE``, ``METADES``).
+        Created with library defaults (no kwargs applied yet). You are expected
+        to inject the tuned pool later with:
+
         ``des_model.set_params(pool_classifiers=fitted_pool)``.
     des_kwargs : dict
         Suggested default keyword arguments for the chosen DES (e.g., ``k``,
         ``DFP``, ``IH_rate``, ``voting``, ``n_jobs``). This dict **does not**
-        include ``pool_classifiers``; add it before fitting.
+        include ``pool_classifiers``; you must add it before fitting.
 
     Raises
     ------
@@ -723,22 +804,32 @@ def get_des_model(
 
     Notes
     -----
-    - **Pool format:** Many DES methods accept either a list of fitted base
-      estimators or the fitted bagging object itself as ``pool_classifiers``.
-      Choose according to the DES method’s API.
-    - **Preprocessing alignment:** The DSEL set must be transformed with the
-      **same fitted preprocessing** used for pool training before calling
-      ``des_model.fit``.
+    - **Pool format:**
+      Many DES methods accept either a list of fitted base estimators or the
+      fitted bagging object itself as ``pool_classifiers``. Choose according
+      to the DES method’s API and your design choice.
+    - **Preprocessing alignment:**
+      The DSEL set must be transformed with the **same fitted preprocessing**
+      used for pool training before calling ``des_model.fit``. Typically this
+      is handled by building a final pipeline:
+
+      ``Pipeline(preprocessing_steps + [('classifier', des_model)])``
+
+      and calling ``final_pipeline.fit(X_dsel_trans, y_dsel)``.
 
     Examples
     --------
-    >>> pool_est, pool_space, des, des_kwargs = get_des_model("KNORAE", random_state=42)
+    >>> pool_est, pool_space, des, des_kwargs = get_des_model(
+    ...     "KNORAE",
+    ...     random_state=42,
+    ...     use_cost_sensitive_learning=True,
+    ... )
     """
-
     # Pool: BaggingDecisionTreeClassifier + its search space
     pool_estimator, pool_param_dist = get_static_model_and_search_space(
         model_name="BaggingDecisionTreeClassifier",
         random_state=random_state,
+        use_cost_sensitive_learning=use_cost_sensitive_learning,
     )
 
     # DES model configuration (class + default kwargs)
