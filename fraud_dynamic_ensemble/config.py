@@ -64,13 +64,13 @@ RESAMPLING_PARAMS = {}
 # outer evaluation setting: RepeatedStratifiedKFold (10 x 10)
 CV_OUTER_N_SPLITS = 10
 CV_OUTER_N_REPEATS = 10
-CV_OUTER_PARALLEL_N_JOBS = 1
+CV_OUTER_PARALLEL_N_JOBS = 10
 
 # inner evaluation setting for dynamical ensemble models
 DSEL_SIZE = 0.15
 
 # inner evaluation setting for hyperparameters tuning: HalvingRandomSearchCV
-TUNING_N_CANDIDATES = 35
+TUNING_N_CANDIDATES = 30
 TUNING_MIN_RESOURCES = 1500
 TUNING_MAX_RESOURCES = "auto"
 TUNING_CV_INNER_N_SPLITS = 5
@@ -86,30 +86,15 @@ STATIC_MODELS = [
     "KNeighborsClassifier",
     "DecisionTreeClassifier",
     "RandomForestClassifier",
-    "ExtraTreesClassifier",
-    "BalancedRandomForestClassifier",
-    "AdaBoostClassifier",
-    "LogitBoostClassifier",
     "XGBClassifier",
-    "RUSBoostClassifier",
 ]
 
 DES_MODELS = [
-    "APosteriori",
-    "APriori",
     "LCA",
-    "MLA",
-    "OLA",
     "DESClustering",
     "DESP",
-    "DESKNN",
-    "KNOP",
-    "KNORAE",
     "KNORAU",
-    "RRC",
-    "DESKL",
-    "Exponential",
-    "Logarithmic",
+    "METADES"
 ]
 
 #################################################################
