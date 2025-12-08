@@ -1,6 +1,7 @@
 from pathlib import Path
-import warnings
+from datetime import datetime
 
+from joblib import Parallel, delayed
 from loguru import logger
 import pandas as pd
 from sklearn.model_selection import RepeatedStratifiedKFold
@@ -9,6 +10,7 @@ import typer
 from fraud_dynamic_ensemble.config import (
     CV_OUTER_N_REPEATS,
     CV_OUTER_N_SPLITS,
+    CV_OUTER_PARALLEL_N_JOBS,
     DES_MODELS,
     DSEL_SIZE,
     EXPERIMENT_DESCRIPTION,
@@ -41,8 +43,6 @@ from fraud_dynamic_ensemble.modeling.utils.training import (
 )
 from fraud_dynamic_ensemble.utils.io_utils import save_dict_json
 
-warnings.filterwarnings("ignore", category=FutureWarning)
-
 app = typer.Typer()
 
 
@@ -53,6 +53,7 @@ def main(
     experiment_description: str = EXPERIMENT_DESCRIPTION,
     model_path: Path = MODELS_DIR,
     target: str = "Class",
+    outer_n_jobs: int = CV_OUTER_PARALLEL_N_JOBS,
 ):
     """
     Run the full training workflow (static models + DES) for the credit-card fraud project.
@@ -60,68 +61,109 @@ def main(
     This Typer command:
       1) loads the processed features CSV,
       2) shuffles and splits features/labels,
-      3) iterates a RepeatedStratifiedKFold outer loop,
-      4) for each outer fold:
-         - tunes and evaluates each STATIC model (pipeline: scaling → feature selection → resampling → classifier),
-         - tunes a bagging pool, fits a DES model on DSEL, and evaluates the DES pipeline on the test fold,
+      3) builds a RepeatedStratifiedKFold outer loop,
+      4) executes all outer folds (sequentially or in parallel, depending on
+         ``outer_n_jobs``); for each outer fold it:
+         - tunes and evaluates each STATIC model
+           (pipeline: scaling → feature selection → resampling → classifier),
+         - tunes a bagging pool, fits a DES model on DSEL, and evaluates the
+           DES pipeline on the outer test fold,
       5) logs and persists configuration and per-fold results as CSVs.
 
     Parameters
     ----------
     input_path : pathlib.Path, default=PROCESSED_DATA_DIR / PROCESSED_FILENAME
-        Path to the **processed** dataset (CSV) containing engineered features and the target column.
+        Path to the **processed** dataset (CSV) containing engineered features
+        and the target column.
     experiment_name : str, default=EXPERIMENT_NAME
         Human-readable experiment label used to build the run folder name.
     experiment_description : str, default=EXPERIMENT_DESCRIPTION
-        Free-text description stored in the run’s `experiment_config.json`.
+        Free-text description stored in the run’s ``experiment_config.json``.
     model_path : pathlib.Path, default=MODELS_DIR
-        Root directory where the experiment subfolder will be created and results saved.
+        Root directory where the experiment subfolder will be created and
+        results saved.
     target : str, default="Class"
-        Name of the target column in `input_path`.
+        Name of the target column in ``input_path``.
+    outer_n_jobs : int, default=CV_OUTER_PARALLEL_N_JOBS
+        Number of outer CV folds to execute in parallel.
+        - ``1``  → sequential execution of outer folds (current behaviour).
+        - ``>1`` → parallelize outer folds with :mod:`joblib.Parallel`.
+          In this case it is usually recommended to set the inner tuning
+          parameter ``TUNING_N_JOBS`` to ``1`` to avoid nested parallelism.
 
     Side Effects
     ------------
-    - Creates/updates files under `<MODELS_DIR>/<RUN_ID>_<experiment_name>/`.
+    - Creates/updates files under ``<MODELS_DIR>/<RUN_ID>_<experiment_name>/``.
     - Writes experiment configuration and two CSV summaries.
-    - Produces extensive logging via the configured `logger`.
+    - Produces extensive logging via the configured :mod:`loguru` ``logger``.
 
     Raises
     ------
     typer.Exit
-        If `input_path` does not exist (precondition failure).
+        If ``input_path`` does not exist (precondition failure).
     ValueError
         If requested features to standardize are not present in the dataset.
 
     Notes
     -----
     Workflow
-    - **Tracking & config dump**: creates `<MODELS_DIR>/<RUN_ID>_<experiment_name>/` and writes
-      `experiment_config.json` with all key settings (CV, scaling, FS, resampling, model lists).
-    - **Data loading**: reads `input_path` CSV; logs shape and global class distribution.
-    - **Shuffle & split**: shuffles the dataset; separates `X` and `y` and converts to NumPy arrays.
-    - **Preprocessing indexes**: validates requested features to standardize and maps them to indices.
-    - **Outer CV**: `RepeatedStratifiedKFold(CV_OUTER_N_SPLITS × CV_OUTER_N_REPEATS)`.
-      For each fold:
-        * **STATIC models**:
-          - build the full pipeline with `build_model_pipeline(...)`,
-          - tune via `RandomizedSearchCV` using `get_static_model_and_search_space(...)`,
-          - evaluate with `train_and_evaluate_one_fold_static_model(...)`,
-          - extract selected features via `get_final_selected_features(...)`,
-          - collect resubstitution and test metrics with `collect_report_one_fold(...)`.
-        * **DES models**:
-          - get pool + DES via `get_des_model(...)`,
-          - build and tune the pool pipeline,
-          - split TRAIN into pool-train/DSEL, fit DES with `train_and_evaluate_one_fold_des_model(...)`,
-          - extract selected features and collect test metrics.
-    - **Persistence**: writes:
-        * `resubstitution_metrics_summary.csv`
-        * `generalization_metrics_summary.csv`
-    - Ensure the processed dataset exists (run `features.py` beforehand as indicated in logs).
-    - `feature_names` passed to `get_final_selected_features` must match the **preprocessor output
-      order**. When using `ColumnTransformer(remainder='passthrough')`, transformed columns
-      typically precede passthrough columns.
-    - Tuning can be computationally intensive; configure `N_JOBS_TUNING`, `N_ITER_TUNING`,
-      and CV splits according to available resources.
+    - **Tracking & config dump**:
+      creates ``<MODELS_DIR>/<RUN_ID>_<experiment_name>/`` and writes
+      ``experiment_config.json`` with all key settings (outer CV, scaling,
+      feature selection, resampling, tuning hyperparameters, model lists).
+    - **Data loading**:
+      reads ``input_path`` CSV; logs shape and global class distribution.
+    - **Shuffle & split**:
+      shuffles the dataset with ``RANDOM_STATE``; separates ``X`` and ``y``
+      and converts them to NumPy arrays.
+    - **Preprocessing indices & feature order**:
+      uses :func:`build_standardization_and_feature_order` to
+      - validate the requested features to standardize,
+      - map them to column indices used by the scaler, and
+      - obtain the post-preprocessing feature names, which are later passed
+        to :func:`get_final_selected_features`.
+    - **Outer CV**:
+      ``RepeatedStratifiedKFold(n_splits=CV_OUTER_N_SPLITS,
+      n_repeats=CV_OUTER_N_REPEATS, random_state=RANDOM_STATE)`` defines the
+      outer evaluation loop. Outer folds can be run sequentially or in
+      parallel depending on ``outer_n_jobs``.
+    - **STATIC models per outer fold**:
+      for each model in ``STATIC_MODELS`` it:
+        * builds the pipeline with :func:`build_model_pipeline`,
+        * obtains the estimator and search space via
+          :func:`get_static_model_and_search_space`,
+        * performs hyperparameter tuning with
+          :class:`sklearn.model_selection.HalvingRandomSearchCV` inside
+          :func:`train_and_evaluate_one_fold_static_model`,
+        * computes resubstitution and test metrics via
+          :func:`compute_classification_metrics`,
+        * extracts selected features via
+          :func:`get_final_selected_features`,
+        * appends rows to the resubstitution and generalization summaries
+          via :func:`collect_report_one_fold`.
+    - **DES models per outer fold**:
+      for each model in ``DES_MODELS`` it:
+        * builds a bagging pool and DES configuration via
+          :func:`get_des_model`,
+        * builds the pool pipeline with :func:`build_model_pipeline`,
+        * tunes the pool with :class:`HalvingRandomSearchCV` and
+          splits TRAIN into pool-training and DSEL inside
+          :func:`train_and_evaluate_one_fold_des_model`,
+        * fits the DES model on DSEL (transformed space),
+        * evaluates the final DES pipeline on the outer test fold and logs
+          the metrics via :func:`collect_report_one_fold`.
+    - **Persistence**:
+      writes two CSV files under the experiment folder:
+        * ``resubstitution_metrics_summary.csv``
+        * ``generalization_metrics_summary.csv``.
+      These contain one row per model, per outer fold, per data split
+      (resubstitution/test), including confusion-matrix counts, metrics,
+      tuning summaries and selected feature information.
+    - Tuning can be computationally intensive; configure
+      ``TUNING_N_CANDIDATES``, ``TUNING_FACTOR``, ``TUNING_MIN_RESOURCES``,
+      ``TUNING_MAX_RESOURCES``, ``TUNING_AGGRESSIVE_ELIMINATION``,
+      ``TUNING_N_JOBS`` and ``TUNING_CV_INNER_N_SPLITS`` according to the
+      available computational resources and desired search budget.
     """
 
     logger.info("Running fraud_dynamic_ensemble/train.py ...")
@@ -129,10 +171,12 @@ def main(
     # --- Set experiment folder and experiment tracking
     experiment_id_name = f"{EXPERIMENT_RUN_ID}_{experiment_name}"
     experiment_path = model_path / experiment_id_name
+    experiment_path.mkdir(parents=True, exist_ok=True)
 
     experiment_tracking = {
         "experiment_id_name": experiment_id_name,
         "experiment_description": experiment_description,
+        "experiment_start_time": datetime.now().strftime("%Y/%m/%d-%H:%M:%S"),
         "feature_transformation_standard_scaler": NUMERICAL_FEATURES_TO_STANDARDIZE,
         "feature_selection_KBest": FS_K_BEST_TO_KEEP,
         "resampling_method": RESAMPLING_METHOD,
@@ -150,11 +194,6 @@ def main(
         "models_to_train": STATIC_MODELS,
         "des_models_to_train": DES_MODELS,
     }
-
-    experiment_path.mkdir(parents=True, exist_ok=True)
-    save_dict_json(
-        data=experiment_tracking, path=experiment_path / "experiment_config.json", mode="w"
-    )
 
     logger.info(f"Initialized experiment: {experiment_id_name}")
 
@@ -210,7 +249,7 @@ def main(
     X, y = X.to_numpy(), y.to_numpy()
     logger.info(f"Dataset type after conversion: type(X)={type(X)}, type(y)={type(y)}")
 
-    ################################# PREPARE SETTINGS FOR TRAINING #################################
+    ################################# PREPARE SETTINGS FOR TRAINING ##################################
     # Fix the evaluation strategy: RepeatedStratifiedKFold(n_splits=10, n_repeats=10)
     cv_outer = RepeatedStratifiedKFold(
         n_splits=CV_OUTER_N_SPLITS, n_repeats=CV_OUTER_N_REPEATS, random_state=RANDOM_STATE
@@ -221,46 +260,94 @@ def main(
     resubstitution_metrics_summary = []
     generalization_metrics_summary = []
 
-    ################################# START TRAINING PHASE #########################################
-    logger.info("Starting training.py models...")
+    ################################# START TRAINING PHASE ###########################################
+    logger.info("Starting model training over all outer folds...")
 
-    for run_id, (train_idx, test_idx) in enumerate(cv_outer.split(X, y)):
-        iteration_idx, fold_idx = divmod(run_id, CV_OUTER_N_SPLITS)
-        print("=" * 165)
-        logger.info(
-            f"[ITERATION {iteration_idx + 1:2} - FOLD {fold_idx + 1:2} - RUN_ID {run_id:3}]"
+    if outer_n_jobs == 1:
+        logger.info("Training all outer folds sequentially")
+
+        # ---- Sequential execution (current behaviour) ----
+        for run_id, (train_idx, test_idx) in enumerate(cv_outer.split(X, y)):
+            iteration_idx, fold_idx = divmod(run_id, CV_OUTER_N_SPLITS)
+
+            print("=" * 165)
+            logger.info(
+                f"[ITERATION {iteration_idx + 1:2} - FOLD {fold_idx + 1:2} - RUN_ID {run_id:3}]"
+            )
+
+            resubstitution_rows, generalization_rows = train_and_evaluate_one_fold_all_models(
+                run_id=run_id,
+                iteration_idx=iteration_idx,
+                fold_idx=fold_idx,
+                train_idx=train_idx,
+                test_idx=test_idx,
+                X=X,
+                y=y,
+                experiment_name=experiment_name,
+                idx_num_features_to_standardize=idx_num_features_to_standardize,
+                transformed_feature_names=transformed_feature_names,
+                static_models=STATIC_MODELS,
+                des_models=DES_MODELS,
+                fs_k_best_to_keep=FS_K_BEST_TO_KEEP,
+                resampling_method=RESAMPLING_METHOD,
+                resampling_params=RESAMPLING_PARAMS,
+                tuning_n_candidates=TUNING_N_CANDIDATES,
+                tuning_factor=TUNING_FACTOR,
+                tuning_min_resources=TUNING_MIN_RESOURCES,
+                tuning_max_resources=TUNING_MAX_RESOURCES,
+                tuning_aggressive_elimination=TUNING_AGGRESSIVE_ELIMINATION,
+                tuning_cv_inner_n_splits=TUNING_CV_INNER_N_SPLITS,
+                tuning_scoring=TUNING_SCORING,
+                tuning_n_jobs=TUNING_N_JOBS,
+                dsel_size=DSEL_SIZE,
+                random_state=RANDOM_STATE,
+            )
+
+            resubstitution_metrics_summary.extend(resubstitution_rows)
+            generalization_metrics_summary.extend(generalization_rows)
+
+    else:
+        # ---- Parallel execution of outer folds ----
+        logger.info(f"Parallelizing outer folds with outer_n_jobs={outer_n_jobs}")
+
+        # Run the 10x10 CV in parallel
+        parallel_results = Parallel(n_jobs=outer_n_jobs, verbose=10)(
+            delayed(train_and_evaluate_one_fold_all_models)(
+                run_id=run_id,
+                iteration_idx=divmod(run_id, CV_OUTER_N_SPLITS)[0],
+                fold_idx=divmod(run_id, CV_OUTER_N_SPLITS)[1],
+                train_idx=train_idx,
+                test_idx=test_idx,
+                X=X,
+                y=y,
+                experiment_name=experiment_name,
+                idx_num_features_to_standardize=idx_num_features_to_standardize,
+                transformed_feature_names=transformed_feature_names,
+                static_models=STATIC_MODELS,
+                des_models=DES_MODELS,
+                fs_k_best_to_keep=FS_K_BEST_TO_KEEP,
+                resampling_method=RESAMPLING_METHOD,
+                resampling_params=RESAMPLING_PARAMS,
+                tuning_n_candidates=TUNING_N_CANDIDATES,
+                tuning_factor=TUNING_FACTOR,
+                tuning_min_resources=TUNING_MIN_RESOURCES,
+                tuning_max_resources=TUNING_MAX_RESOURCES,
+                tuning_aggressive_elimination=TUNING_AGGRESSIVE_ELIMINATION,
+                tuning_cv_inner_n_splits=TUNING_CV_INNER_N_SPLITS,
+                tuning_scoring=TUNING_SCORING,
+                tuning_n_jobs=TUNING_N_JOBS,
+                dsel_size=DSEL_SIZE,
+                random_state=RANDOM_STATE,
+            )
+            for run_id, (train_idx, test_idx) in enumerate(cv_outer.split(X, y))
         )
 
-        resubstitution_rows, generalization_rows = train_and_evaluate_one_fold_all_models(
-            run_id=run_id,
-            iteration_idx=iteration_idx,
-            fold_idx=fold_idx,
-            train_idx=train_idx,
-            test_idx=test_idx,
-            X=X,
-            y=y,
-            experiment_name=experiment_name,
-            idx_num_features_to_standardize=idx_num_features_to_standardize,
-            transformed_feature_names=transformed_feature_names,
-            static_models=STATIC_MODELS,
-            des_models=DES_MODELS,
-            fs_k_best_to_keep=FS_K_BEST_TO_KEEP,
-            resampling_method=RESAMPLING_METHOD,
-            resampling_params=RESAMPLING_PARAMS,
-            tuning_n_candidates=TUNING_N_CANDIDATES,
-            tuning_factor=TUNING_FACTOR,
-            tuning_min_resources=TUNING_MIN_RESOURCES,
-            tuning_max_resources=TUNING_MAX_RESOURCES,
-            tuning_aggressive_elimination=TUNING_AGGRESSIVE_ELIMINATION,
-            tuning_cv_inner_n_splits=TUNING_CV_INNER_N_SPLITS,
-            tuning_scoring=TUNING_SCORING,
-            tuning_n_jobs=TUNING_N_JOBS,
-            dsel_size=DSEL_SIZE,
-            random_state=RANDOM_STATE,
-        )
-
-        resubstitution_metrics_summary.extend(resubstitution_rows)
-        generalization_metrics_summary.extend(generalization_rows)
+        # ---- Aggregation (Post-Processing) ----
+        # Parallel returns a list of tuples: [(res_rows, gen_rows), (res_rows, gen_rows), ...]
+        # We must flatten this back into your summary lists.
+        for resubstitution_rows, generalization_rows in parallel_results:
+            resubstitution_metrics_summary.extend(resubstitution_rows)
+            generalization_metrics_summary.extend(generalization_rows)
 
     ############################### STORE EXPERIMENTAL RESULTS #####################################
     resubstitution_metrics_summary = pd.DataFrame(resubstitution_metrics_summary)
@@ -271,6 +358,11 @@ def main(
     generalization_metrics_summary = pd.DataFrame(generalization_metrics_summary)
     generalization_metrics_summary.to_csv(
         experiment_path / "generalization_metrics_summary.csv", index=False, sep=","
+    )
+
+    experiment_tracking["experiment_end_time"] = datetime.now().strftime("%Y/%m/%d-%H:%M:%S")
+    save_dict_json(
+        data=experiment_tracking, path=experiment_path / "experiment_config.json", mode="w"
     )
 
     logger.success("Running fraud_dynamic_ensemble/train.py COMPLETED!")

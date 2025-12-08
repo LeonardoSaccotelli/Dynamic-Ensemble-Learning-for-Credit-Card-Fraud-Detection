@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import time
 from typing import Any, Dict, List, Sequence, Tuple, Union
+import warnings
 
 from imblearn.pipeline import Pipeline as ImbPipeline
 import numpy as np
@@ -26,6 +27,8 @@ from fraud_dynamic_ensemble.modeling.utils.pipeline import (
     build_model_pipeline,
     get_final_selected_features,
 )
+
+warnings.filterwarnings("ignore", category=FutureWarning)
 
 
 def train_and_evaluate_one_fold_static_model(
@@ -705,6 +708,7 @@ def train_and_evaluate_one_fold_all_models(
 
     # ----- Start training STATIC MODELS -----
     for static_model_name in static_models:
+        print("-" * 165)
         print(f"Training STATIC model: {static_model_name}")
 
         # Get the static model estimator and with its hyperparameter search space
@@ -781,10 +785,9 @@ def train_and_evaluate_one_fold_all_models(
             selected_features_names=selected_names,
         )
 
-    print("-" * 165)
-
     # ----- Start training DES MODELS -----
     for des_model_name in des_models:
+        print("-" * 165)
         print(f"Training DES model: {des_model_name}")
 
         # Get the des model estimator and its configuration, with the
