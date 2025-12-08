@@ -728,7 +728,7 @@ def train_and_evaluate_one_fold_all_models(
         static_model_estimator, static_model_search_space = get_static_model_and_search_space(
             static_model_name,
             random_state=random_state,
-            use_cost_sensitive_learning=use_cost_sensitive_learning
+            use_cost_sensitive_learning=use_cost_sensitive_learning,
         )
 
         # Build the final pipeline: Preprocessing + Feature Selection + Resampling + Classifier
@@ -809,7 +809,7 @@ def train_and_evaluate_one_fold_all_models(
         pool_classifiers, pool_search_space, des_model_estimator, des_model_conf = get_des_model(
             des_model_name,
             random_state=random_state,
-            use_cost_sensitive_learning=use_cost_sensitive_learning
+            use_cost_sensitive_learning=use_cost_sensitive_learning,
         )
 
         # Build the final pipeline: Preprocessing + Feature Selection + Resampling + Classifier

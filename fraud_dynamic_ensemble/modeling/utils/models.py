@@ -187,9 +187,7 @@ def _boosting_core_param_space(
 
 
 def get_static_model_and_search_space(
-        model_name: str,
-        random_state: int | None = None,
-        use_cost_sensitive_learning: bool = True
+    model_name: str, random_state: int | None = None, use_cost_sensitive_learning: bool = True
 ) -> tuple[BaseEstimator, Dict[str, Any]]:
     """
     Build a classifier instance and its hyperparameter search space.
@@ -724,9 +722,9 @@ def get_static_model_and_search_space(
 
 
 def get_des_model(
-        model_name: str,
-        random_state: int | None = None,
-        use_cost_sensitive_learning: bool = True,
+    model_name: str,
+    random_state: int | None = None,
+    use_cost_sensitive_learning: bool = True,
 ) -> Tuple[BaseEstimator, Dict[str, Any], BaseEstimator, Dict[str, Any]]:
     """
     Build the **pool (bagging) configuration** and an **unfitted DESlib model**

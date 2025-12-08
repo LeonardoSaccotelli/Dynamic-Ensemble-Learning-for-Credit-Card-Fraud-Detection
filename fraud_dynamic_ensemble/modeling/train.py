@@ -1,5 +1,5 @@
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
 
 from joblib import Parallel, delayed
 from loguru import logger
@@ -8,7 +8,6 @@ from sklearn.model_selection import RepeatedStratifiedKFold
 import typer
 
 from fraud_dynamic_ensemble.config import (
-    USE_COST_SENSITIVE_LEARNING,
     CV_OUTER_N_REPEATS,
     CV_OUTER_N_SPLITS,
     CV_OUTER_PARALLEL_N_JOBS,
@@ -34,6 +33,7 @@ from fraud_dynamic_ensemble.config import (
     TUNING_N_CANDIDATES,
     TUNING_N_JOBS,
     TUNING_SCORING,
+    USE_COST_SENSITIVE_LEARNING,
 )
 from fraud_dynamic_ensemble.data_preparation.sampling import get_class_stats
 from fraud_dynamic_ensemble.modeling.utils.pipeline import (
