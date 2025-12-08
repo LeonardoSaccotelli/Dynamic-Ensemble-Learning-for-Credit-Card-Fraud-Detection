@@ -273,9 +273,6 @@ def main(
             iteration_idx, fold_idx = divmod(run_id, CV_OUTER_N_SPLITS)
 
             print("=" * 165)
-            logger.info(
-                f"[ITERATION {iteration_idx + 1:2} - FOLD {fold_idx + 1:2} - RUN_ID {run_id:3}]"
-            )
 
             resubstitution_rows, generalization_rows = train_and_evaluate_one_fold_all_models(
                 run_id=run_id,
@@ -304,11 +301,11 @@ def main(
                 tuning_n_jobs=TUNING_N_JOBS,
                 dsel_size=DSEL_SIZE,
                 random_state=RANDOM_STATE,
+                logger=logger,
             )
 
             resubstitution_metrics_summary.extend(resubstitution_rows)
             generalization_metrics_summary.extend(generalization_rows)
-            exit()
 
     else:
         # ---- Parallel execution of outer folds ----
@@ -343,6 +340,7 @@ def main(
                 tuning_n_jobs=TUNING_N_JOBS,
                 dsel_size=DSEL_SIZE,
                 random_state=RANDOM_STATE,
+                logger=logger,
             )
             for run_id, (train_idx, test_idx) in enumerate(cv_outer.split(X, y))
         )

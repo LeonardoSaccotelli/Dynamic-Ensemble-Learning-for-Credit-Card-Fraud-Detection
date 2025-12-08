@@ -533,6 +533,7 @@ def train_and_evaluate_one_fold_all_models(
     tuning_n_jobs: int,
     dsel_size: float,
     random_state: int,
+    logger: Any | None = None,
 ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
     """
     Train and evaluate all STATIC and DES models on a single outer CV fold.
@@ -638,6 +639,11 @@ def train_and_evaluate_one_fold_all_models(
     random_state : int
         Random seed forwarded to models, inner CV splitters and DSEL split
         within this fold.
+    logger : loguru.Logger or None, optional
+        Optional Loguru logger used for progress messages and fold-level
+        diagnostics. When ``None`` (default), messages are printed to
+        standard output via :func:`print`. When provided, messages are
+        emitted through ``logger.info``.
 
     Returns
     -------
@@ -657,10 +663,15 @@ def train_and_evaluate_one_fold_all_models(
     - This function is **config-free**: all required settings are passed as
       parameters, which makes it suitable for potential parallel execution
       of outer folds.
+    - If a :class:`loguru.Logger` instance is provided via ``logger``, all
+      informational messages are routed through ``logger.info``; otherwise
+      they fall back to :func:`print`.
 
     Examples
     --------
     Typical usage inside the main outer CV loop::
+
+        from loguru import logger
 
         cv_outer = RepeatedStratifiedKFold(
             n_splits=10,
@@ -686,7 +697,7 @@ def train_and_evaluate_one_fold_all_models(
                 idx_num_features_to_standardize=idx_num_features_to_standardize,
                 transformed_feature_names=transformed_feature_names,
                 static_models=["SVC", "RandomForestClassifier"],
-                des_models=["KNORAE"],
+                des_models=["KNORAU", "METADES"],
                 fs_k_best_to_keep=20,
                 use_cost_sensitive_learning=True,
                 resampling_method="SMOTE",
@@ -701,6 +712,7 @@ def train_and_evaluate_one_fold_all_models(
                 tuning_n_jobs=-1,
                 dsel_size=0.2,
                 random_state=42,
+                logger=logger,
             )
 
             resubstitution_metrics_summary.extend(res_rows)
@@ -710,6 +722,16 @@ def train_and_evaluate_one_fold_all_models(
     resubstitution_rows: List[Dict[str, Any]] = []
     generalization_rows: List[Dict[str, Any]] = []
 
+    # Setup logging function (Loguru if provided, stdout otherwise)
+    if logger is None:
+
+        def _log(message: str) -> None:
+            print(message)
+    else:
+
+        def _log(message: str) -> None:
+            logger.info(message)
+
     # Split the data into training set (9 training folds) and test set (1 test fold)
     X_train, X_test = X[train_idx], X[test_idx]
     y_train, y_test = y[train_idx], y[test_idx]
@@ -717,12 +739,14 @@ def train_and_evaluate_one_fold_all_models(
     # Report class balance statistics for iteration
     for name, target_arr in zip(["train dataset", "test dataset"], [y_train, y_test]):
         unique, frequency = np.unique(target_arr, return_counts=True)
-        print(f"Class distribution ({name} statistics) [class, frequency]: {unique, frequency}")
+        _log(f"Class distribution ({name} statistics) [class, frequency]: {(unique, frequency)}")
+
+    _log(f"[ITERATION {iteration_idx + 1:2} - FOLD {fold_idx + 1:2} - RUN_ID {run_id:3}]")
 
     # ----- Start training STATIC MODELS -----
     for static_model_name in static_models:
         print("-" * 165)
-        print(f"Training STATIC model: {static_model_name}")
+        _log(f"Training STATIC model: {static_model_name}")
 
         # Get the static model estimator and with its hyperparameter search space
         static_model_estimator, static_model_search_space = get_static_model_and_search_space(
@@ -760,7 +784,7 @@ def train_and_evaluate_one_fold_all_models(
             aggressive_elimination=tuning_aggressive_elimination,
             val_cv_split=tuning_cv_inner_n_splits,
             scoring=tuning_scoring,
-            random_state=random_state,
+            random_state=random_state + run_id,
             n_jobs=tuning_n_jobs,
         )
 
@@ -802,7 +826,7 @@ def train_and_evaluate_one_fold_all_models(
     # ----- Start training DES MODELS -----
     for des_model_name in des_models:
         print("-" * 165)
-        print(f"Training DES model: {des_model_name}")
+        _log(f"Training DES model: {des_model_name}")
 
         # Get the des model estimator and its configuration, with the
         # pool of classifiers and its hyperparameter search space
@@ -839,7 +863,7 @@ def train_and_evaluate_one_fold_all_models(
             dsel_size=dsel_size,
             val_cv_split=tuning_cv_inner_n_splits,
             scoring=tuning_scoring,
-            random_state=random_state,
+            random_state=random_state + run_id,
             n_jobs=tuning_n_jobs,
         )
 
@@ -863,6 +887,6 @@ def train_and_evaluate_one_fold_all_models(
             selected_features_names=selected_names,
         )
 
-    print(f"Completed [ITERATION {iteration_idx + 1} - FOLD {fold_idx + 1}] - RUN_ID {run_id}]")
+    _log(f"Completed [ITERATION {iteration_idx + 1} - FOLD {fold_idx + 1}] - RUN_ID {run_id}]")
 
     return resubstitution_rows, generalization_rows
