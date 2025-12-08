@@ -63,6 +63,7 @@ RESAMPLING_PARAMS = {}
 # outer evaluation setting: RepeatedStratifiedKFold (10 x 10)
 CV_OUTER_N_SPLITS = 10
 CV_OUTER_N_REPEATS = 10
+CV_OUTER_PARALLEL_N_JOBS = 100
 
 # inner evaluation setting for dynamical ensemble models
 DSEL_SIZE = 0.15
