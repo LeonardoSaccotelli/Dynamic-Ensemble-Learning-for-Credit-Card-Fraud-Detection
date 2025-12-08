@@ -8,6 +8,7 @@ from sklearn.model_selection import RepeatedStratifiedKFold
 import typer
 
 from fraud_dynamic_ensemble.config import (
+    USE_COST_SENSITIVE_LEARNING,
     CV_OUTER_N_REPEATS,
     CV_OUTER_N_SPLITS,
     CV_OUTER_PARALLEL_N_JOBS,
@@ -177,6 +178,7 @@ def main(
         "experiment_id_name": experiment_id_name,
         "experiment_description": experiment_description,
         "experiment_start_time": datetime.now().strftime("%Y/%m/%d-%H:%M:%S"),
+        "use_cost_sensitive_learning": USE_COST_SENSITIVE_LEARNING,
         "feature_transformation_standard_scaler": NUMERICAL_FEATURES_TO_STANDARDIZE,
         "feature_selection_KBest": FS_K_BEST_TO_KEEP,
         "resampling_method": RESAMPLING_METHOD,
@@ -289,6 +291,7 @@ def main(
                 static_models=STATIC_MODELS,
                 des_models=DES_MODELS,
                 fs_k_best_to_keep=FS_K_BEST_TO_KEEP,
+                use_cost_sensitive_learning=USE_COST_SENSITIVE_LEARNING,
                 resampling_method=RESAMPLING_METHOD,
                 resampling_params=RESAMPLING_PARAMS,
                 tuning_n_candidates=TUNING_N_CANDIDATES,
@@ -305,6 +308,7 @@ def main(
 
             resubstitution_metrics_summary.extend(resubstitution_rows)
             generalization_metrics_summary.extend(generalization_rows)
+            exit()
 
     else:
         # ---- Parallel execution of outer folds ----
@@ -326,6 +330,7 @@ def main(
                 static_models=STATIC_MODELS,
                 des_models=DES_MODELS,
                 fs_k_best_to_keep=FS_K_BEST_TO_KEEP,
+                use_cost_sensitive_learning=USE_COST_SENSITIVE_LEARNING,
                 resampling_method=RESAMPLING_METHOD,
                 resampling_params=RESAMPLING_PARAMS,
                 tuning_n_candidates=TUNING_N_CANDIDATES,
