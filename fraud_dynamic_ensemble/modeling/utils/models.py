@@ -1031,6 +1031,7 @@ def get_des_model(
             "model_class": METADES,
             "model_args": {
                 "k": 8,
+                "Kp": 8,
                 "DFP": True,
                 "IH_rate": 0.3,
                 "mode": "selection",
