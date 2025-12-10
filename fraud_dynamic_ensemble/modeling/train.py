@@ -318,7 +318,7 @@ def main(
                 use_cost_sensitive_learning=USE_COST_SENSITIVE_LEARNING,
                 resampling_method=RESAMPLING_METHOD,
                 resampling_params=RESAMPLING_PARAMS,
-                tuning_n_candidates=TUNING_N_ITER,
+                tuning_n_iter=TUNING_N_ITER,
                 tuning_cv_inner_n_splits=TUNING_CV_INNER_N_SPLITS,
                 tuning_scoring=TUNING_SCORING,
                 tuning_n_jobs=TUNING_N_JOBS,

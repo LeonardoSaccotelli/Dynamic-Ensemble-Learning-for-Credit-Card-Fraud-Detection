@@ -153,10 +153,7 @@ def train_and_evaluate_one_fold_static_model(
     )
 
     print(
-        f"[RANDOMIZED SEARCH SETTINGS]:"
-        f"\nscoring: {scoring}"
-        f"\nrandom_state: {random_state}"
-        f"\nn_jobs: {n_jobs}"
+        f"[RANDOMIZED SEARCH SETTINGS]: scoring: {scoring}, random_state: {random_state}, n_jobs: {n_jobs}"
     )
 
     search = RandomizedSearchCV(
@@ -351,10 +348,7 @@ def train_and_evaluate_one_fold_des_model(
     )
 
     print(
-        f"[RANDOMIZED SEARCH SETTINGS]:"
-        f"\nscoring: {scoring}"
-        f"\nrandom_state: {random_state}"
-        f"\nn_jobs: {n_jobs}"
+        f"[RANDOMIZED SEARCH SETTINGS]: scoring: {scoring}, random_state: {random_state}, n_jobs: {n_jobs}"
     )
 
     search = RandomizedSearchCV(
