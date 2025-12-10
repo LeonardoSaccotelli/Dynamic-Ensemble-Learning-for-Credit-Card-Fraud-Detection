@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 from sklearn.base import BaseEstimator
 from sklearn.model_selection import (
-    HalvingRandomSearchCV,
+    RandomizedSearchCV,
     StratifiedKFold,
     train_test_split,
 )
@@ -38,16 +38,11 @@ def train_and_evaluate_one_fold_static_model(
     y_train: Union[pd.Series, np.ndarray],
     X_test: Union[pd.DataFrame, np.ndarray],
     y_test: Union[pd.Series, np.ndarray],
+    n_iter: int,
     val_cv_split: int = 5,
     scoring: str = "f1",
     random_state: int = 42,
     n_jobs: int = -1,
-    factor: int = 3,
-    min_resources: int | str = "smallest",
-    max_resources: int | str = "auto",
-    aggressive_elimination: bool = False,
-    resource: str = "n_samples",
-    n_candidates: int | str = "exhaust",
 ) -> tuple[
     Union[ImbPipeline, Pipeline, BaseEstimator],
     Dict[str, Any],
@@ -55,7 +50,7 @@ def train_and_evaluate_one_fold_static_model(
     Dict[str, float],
 ]:
     """
-    Tune a model (or pipeline) with ``HalvingRandomSearchCV`` on the training set,
+    Tune a model (or pipeline) with ``RandomizedSearchCV`` on the training set,
     refit the best configuration, and report metrics on both train and test.
 
     The procedure uses a stratified CV splitter during the hyperparameter search,
@@ -71,66 +66,35 @@ def train_and_evaluate_one_fold_static_model(
         also implement ``predict_proba`` (or you must adapt the code to use
         ``decision_function``).
     search_space : dict
-        Parameter distributions for ``HalvingRandomSearchCV``. Keys must match the
+        Parameter distributions for ``RandomizedSearchCV``. Keys must match the
         estimator (or pipeline step) names, e.g. ``"classifier__C"``,
         ``"classifier__max_depth"``.
     X_train, X_test : array-like of shape (n_samples, n_features)
         Training and test features.
     y_train, y_test : array-like of shape (n_samples,)
         Training and test labels.
+    n_iter : int
+        Number of parameter settings sampled by ``RandomizedSearchCV``. Each
+        candidate is drawn at random from ``search_space``.
     val_cv_split : int, default=5
         Number of stratified folds used during the hyperparameter search
         (inner CV for model selection).
     scoring : str, default="f1"
-        Optimization metric passed to ``HalvingRandomSearchCV`` (e.g., ``"f1"``,
+        Optimization metric passed to ``RandomizedSearchCV`` (e.g., ``"f1"``,
         ``"average_precision"``, ``"roc_auc"``).
     random_state : int, default=42
         Random seed for both the ``StratifiedKFold`` splitter (with shuffling) and
-        the ``HalvingRandomSearchCV`` search process.
+        the ``RandomizedSearchCV`` search process.
     n_jobs : int, default=-1
-        Number of parallel jobs for the halving search (``-1`` uses all available
+        Number of parallel jobs for the randomized search (``-1`` uses all available
         cores). The underlying estimators should typically use ``n_jobs=1`` to
         avoid nested parallelism.
-    factor : int, default=3
-        The halving parameter. At each iteration, only a fraction ``1 / factor``
-        of the candidates is selected to continue to the next round with
-        increased resources (e.g., ``factor=3`` keeps the best third).
-    min_resources : {"exhaust", "smallest"} or int, default="smallest"
-        Minimum amount of resource (e.g. number of samples) that any candidate
-        is allowed to use at the first iteration. Equivalently, this defines the
-        resources ``r0`` allocated per candidate in the first round. If
-        ``min_resources="exhaust"``, enough resources are used so that only a
-        single iteration is run (subject to ``max_resources`` and ``factor``).
-    max_resources : int or "auto", default="auto"
-        Maximum amount of resources that any candidate is allowed to use. When
-        ``resource="n_samples"`` (default) and ``max_resources="auto"``, this is
-        set to ``n_samples`` (the size of the training set). If ``resource`` is
-        set to another estimator parameter (e.g. ``"n_estimators"``), then
-        ``max_resources`` must be an integer and **not** ``"auto"``.
-    aggressive_elimination : bool, default=False
-        Controls how aggressively candidates are eliminated when there are not
-        enough resources to reduce the pool to at most ``factor`` candidates at
-        the last iteration. If ``True``, the search may replay earlier
-        iterations to further prune the pool; if ``False``, the last iteration
-        may evaluate more than ``factor`` candidates.
-    resource : {"n_samples"} or str, default="n_samples"
-        Name of the resource that increases with each iteration. By default this
-        is ``"n_samples"`` (number of training samples). It can also be set to
-        any integer-valued parameter of the base estimator (e.g. ``"n_estimators"``,
-        ``"n_iterations"``). In that case, ``max_resources`` cannot be ``"auto"``
-        and must be specified as an integer.
-    n_candidates : int or "exhaust", default="exhaust"
-        Number of candidate parameter settings to sample at the first iteration.
-        If set to ``"exhaust"``, enough candidates are sampled so that the last
-        iteration uses as many resources as possible, given
-        ``min_resources``, ``max_resources`` and ``factor``. In this case,
-        ``min_resources`` cannot be ``"exhaust"``.
 
     Returns
     -------
     best_model : imblearn.pipeline.Pipeline or sklearn.pipeline.Pipeline or BaseEstimator
         The refit estimator corresponding to the best hyperparameter configuration
-        found by ``HalvingRandomSearchCV``.
+        found by ``RandomizedSearchCV``.
     tuning_results : dict
         Summary of the tuning at the best index, including:
         - ``cv_tuning_mean_train_score`` : float
@@ -150,18 +114,17 @@ def train_and_evaluate_one_fold_static_model(
 
     Notes
     -----
-    - The CV splitter used inside ``HalvingRandomSearchCV`` is
+    - The CV splitter used inside ``RandomizedSearchCV`` is
       ``StratifiedKFold(n_splits=val_cv_split, shuffle=True, random_state=random_state)``
       to preserve class proportions across folds.
     - Hyperparameter names in ``search_space`` must align with your pipeline
       step names and scikit-learn’s double-underscore convention.
-    - ``HalvingRandomSearchCV`` performs a **successive halving** strategy:
-      it starts with a larger set of random configurations evaluated on a
-      subset of the data (``min_resources``) and keeps only the top fraction
-      (controlled by ``factor``) while increasing the resources up to
-      ``max_resources``.
+    - ``RandomizedSearchCV`` explores the hyperparameter space by sampling
+      random configurations from the specified distributions. Increasing
+      ``n_iter`` improves the coverage of the search space at the cost of
+      higher computation time.
     - For strict reproducibility, the combination of ``random_state`` for both
-      the splitter and the halving search ensures deterministic behaviour given
+      the splitter and the randomized search ensures deterministic behaviour given
       the same data and configuration.
 
     Examples
@@ -169,21 +132,18 @@ def train_and_evaluate_one_fold_static_model(
     Optimize a pipeline and evaluate:
 
     >>> splitter_metric = "average_precision"
-    >>> best_model, tuning, resubstitution_metrics, test_metrics = train_and_evaluate_one_fold_static_model(
-    ...     base_model=base_model,            # e.g., ImbPipeline([... ('classifier', clf)])
-    ...     search_space=search_space,
-    ...     X_train=X_train, y_train=y_train,
-    ...     X_test=X_test,   y_test=y_test,
-    ...     val_cv_split=5,
-    ...     scoring=splitter_metric,
-    ...     random_state=42,
-    ...     n_jobs=-1,
-    ...     factor=3,
-    ...     min_resources="smallest",
-    ...     max_resources="auto",
-    ...     aggressive_elimination=False,
-    ...     resource="n_samples",
-    ...     n_candidates="exhaust",
+    >>> best_model, tuning, resubstitution_metrics, test_metrics = (
+    ...     train_and_evaluate_one_fold_static_model(
+    ...         base_model=base_model,          # e.g., ImbPipeline([... ('classifier', clf)])
+    ...         search_space=search_space,
+    ...         X_train=X_train, y_train=y_train,
+    ...         X_test=X_test,   y_test=y_test,
+    ...         n_iter=35,
+    ...         val_cv_split=5,
+    ...         scoring=splitter_metric,
+    ...         random_state=42,
+    ...         n_jobs=-1,
+    ...     )
     ... )
     """
     splitter = StratifiedKFold(
@@ -193,21 +153,16 @@ def train_and_evaluate_one_fold_static_model(
     )
 
     print(
-        f"[HALVING SEARCH SETTINGS]:"
+        f"[RANDOMIZED SEARCH SETTINGS]:"
         f"\nscoring: {scoring}"
         f"\nrandom_state: {random_state}"
         f"\nn_jobs: {n_jobs}"
     )
 
-    search = HalvingRandomSearchCV(
+    search = RandomizedSearchCV(
         estimator=base_model,
         param_distributions=search_space,
-        factor=factor,
-        min_resources=min_resources,
-        max_resources=max_resources,
-        aggressive_elimination=aggressive_elimination,
-        resource=resource,
-        n_candidates=n_candidates,
+        n_iter=n_iter,
         scoring=scoring,
         n_jobs=n_jobs,
         refit=True,
@@ -234,7 +189,7 @@ def train_and_evaluate_one_fold_static_model(
         "best_params": search.best_params_,
         "tuning_time": end_tuning_time - start_tuning_time,
     }
-    print(f"[HALVING SEARCH BEST PARAMS]: {tuning_results['best_params']}")
+    print(f"[RANDOMIZED SEARCH BEST PARAMS]: {tuning_results['best_params']}")
 
     # Evaluate on the training set (resubstitution error)
     print("[COMPUTING RESUBSTITUTION METRICS]...")
@@ -268,17 +223,12 @@ def train_and_evaluate_one_fold_des_model(
     y_train: Union[pd.Series, np.ndarray],
     X_test: Union[pd.DataFrame, np.ndarray],
     y_test: Union[pd.Series, np.ndarray],
+    n_iter: int,
     dsel_size: float = 0.2,
     val_cv_split: int = 5,
     scoring: str = "f1",
     random_state: int = 42,
     n_jobs: int = -1,
-    factor: int = 3,
-    min_resources: int | str = "smallest",
-    max_resources: int | str = "auto",
-    aggressive_elimination: bool = False,
-    resource: str = "n_samples",
-    n_candidates: int | str = "exhaust",
 ) -> Tuple[Pipeline, Dict[str, float | int]]:
     """
     Train a **Dynamic Ensemble Selection (DES)** model on one outer fold and
@@ -288,7 +238,7 @@ def train_and_evaluate_one_fold_des_model(
     --------
     1) Split the provided outer training set into:
        - **pool-training** subset: to tune/fit the base ensemble
-         (``pool_classifiers``) with ``HalvingRandomSearchCV``.
+         (``pool_classifiers``) with ``RandomizedSearchCV``.
        - **DSEL** subset: to fit the DES competence model.
     2) Tune and refit ``pool_classifiers`` on the pool-training subset.
     3) From the best pool pipeline:
@@ -317,7 +267,7 @@ def train_and_evaluate_one_fold_des_model(
         The ``"resampling"`` step is used **only** during pool training and is **dropped**
         from the final inference pipeline.
     search_space : dict
-        Hyperparameter distributions for ``HalvingRandomSearchCV``. Keys must match the pool's
+        Hyperparameter distributions for ``RandomizedSearchCV``. Keys must match the pool's
         parameter naming (e.g., ``"classifier__n_estimators"``,
         ``"preprocessor__scaler__with_mean"``).
     X_train : pandas.DataFrame or numpy.ndarray
@@ -328,50 +278,21 @@ def train_and_evaluate_one_fold_des_model(
         Features of the **outer test** fold (never used in tuning or DSEL fitting).
     y_test : pandas.Series or numpy.ndarray
         Labels of the outer test fold.
+    n_iter : int
+        Number of parameter settings sampled by ``RandomizedSearchCV`` when tuning
+        the pool ensemble.
     dsel_size : float, default=0.2
         Proportion of ``X_train`` reserved for DSEL (``0 < dsel_size < 1``).
     val_cv_split : int, default=5
         Number of stratified folds for the inner hyperparameter search.
     scoring : str, default="f1"
-        Scoring metric passed to ``HalvingRandomSearchCV`` (e.g., ``"f1"``, ``"roc_auc"``,
+        Scoring metric passed to ``RandomizedSearchCV`` (e.g., ``"f1"``, ``"roc_auc"``,
         ``"average_precision"``).
     random_state : int, default=42
-        Random seed used in the DSEL split, the inner CV splitter, and the halving search.
+        Random seed used in the DSEL split, the inner CV splitter, and the randomized search.
     n_jobs : int, default=-1
-        Parallel jobs for ``HalvingRandomSearchCV`` (``-1`` uses all cores). The underlying
+        Parallel jobs for ``RandomizedSearchCV`` (``-1`` uses all cores). The underlying
         estimators should typically use ``n_jobs=1`` to avoid nested parallelism.
-    factor : int, default=3
-        The halving parameter. At each iteration, only a fraction ``1 / factor`` of the
-        candidates is selected to continue to the next round with increased resources
-        (e.g., ``factor=3`` keeps the best third).
-    min_resources : {"exhaust", "smallest"} or int, default="smallest"
-        Minimum amount of resource (e.g. number of samples) that any candidate is allowed
-        to use at the first iteration. Equivalently, this defines the resources ``r0``
-        allocated per candidate in the first round.
-    max_resources : int or "auto", default="auto"
-        Maximum amount of resources that any candidate is allowed to use. When
-        ``resource="n_samples"`` (default) and ``max_resources="auto"``, this is set to
-        ``n_samples`` (the size of the training set). If ``resource`` is set to another
-        estimator parameter (e.g. ``"n_estimators"``), then ``max_resources`` must be an
-        integer and **not** ``"auto"``.
-    aggressive_elimination : bool, default=False
-        Controls how aggressively candidates are eliminated when there are not enough
-        resources to reduce the pool to at most ``factor`` candidates at the last
-        iteration. If ``True``, the search may replay earlier iterations to further
-        prune the pool; if ``False``, the last iteration may evaluate more than
-        ``factor`` candidates.
-    resource : {"n_samples"} or str, default="n_samples"
-        Name of the resource that increases with each iteration. By default this is
-        ``"n_samples"`` (number of training samples). It can also be set to any
-        integer-valued parameter of the base estimator (e.g. ``"n_estimators"``,
-        ``"n_iterations"``). In that case, ``max_resources`` cannot be ``"auto"`` and
-        must be specified as an integer.
-    n_candidates : int or "exhaust", default="exhaust"
-        Number of candidate parameter settings to sample at the first iteration.
-        If set to ``"exhaust"``, enough candidates are sampled so that the last
-        iteration uses as many resources as possible, given ``min_resources``,
-        ``max_resources`` and ``factor``. In this case, ``min_resources`` cannot be
-        ``"exhaust"``.
 
     Returns
     -------
@@ -395,10 +316,6 @@ def train_and_evaluate_one_fold_des_model(
     - **Probabilities:** If ``predict_proba`` is unavailable, the code falls back to
       ``None`` for probabilities; ensure your ``compute_classification_metrics`` supports
       that or adapt it to ``decision_function``-based metrics.
-    - ``HalvingRandomSearchCV`` performs a **successive halving** strategy for tuning
-      the pool: it starts with a larger set of random configurations evaluated on a
-      subset of the data (``min_resources``) and keeps only the top fraction
-      (controlled by ``factor``) while increasing the resources up to ``max_resources``.
 
     Examples
     --------
@@ -409,17 +326,12 @@ def train_and_evaluate_one_fold_des_model(
     ...     search_space=search_space,
     ...     X_train=X_train, y_train=y_train,
     ...     X_test=X_test,   y_test=y_test,
+    ...     n_iter=35,
     ...     dsel_size=0.2,
     ...     val_cv_split=5,
     ...     scoring="average_precision",
     ...     random_state=42,
     ...     n_jobs=-1,
-    ...     factor=3,
-    ...     min_resources="smallest",
-    ...     max_resources="auto",
-    ...     aggressive_elimination=False,
-    ...     resource="n_samples",
-    ...     n_candidates="exhaust",
     ... )
     """
     # Split TRAIN into pool-training and DSEL
@@ -439,21 +351,16 @@ def train_and_evaluate_one_fold_des_model(
     )
 
     print(
-        f"[HALVING SEARCH SETTINGS]:"
+        f"[RANDOMIZED SEARCH SETTINGS]:"
         f"\nscoring: {scoring}"
         f"\nrandom_state: {random_state}"
         f"\nn_jobs: {n_jobs}"
     )
 
-    search = HalvingRandomSearchCV(
+    search = RandomizedSearchCV(
         estimator=pool_classifiers,
         param_distributions=search_space,
-        factor=factor,
-        min_resources=min_resources,
-        max_resources=max_resources,
-        aggressive_elimination=aggressive_elimination,
-        resource=resource,
-        n_candidates=n_candidates,
+        n_iter=n_iter,
         scoring=scoring,
         n_jobs=n_jobs,
         refit=True,
@@ -465,7 +372,7 @@ def train_and_evaluate_one_fold_des_model(
 
     search.fit(X_train_pool, y_train_pool)
     best_pipe_pool_classifiers = search.best_estimator_
-    print(f"[HALVING SEARCH BEST PARAMS]: {search.best_params_}")
+    print(f"[RANDOMIZED SEARCH BEST PARAMS]: {search.best_params_}")
 
     # Extract the preprocessing pipeline (fitted)
     # We skip resampling step since it is required just at training time
@@ -523,11 +430,7 @@ def train_and_evaluate_one_fold_all_models(
     use_cost_sensitive_learning: bool,
     resampling_method: str | None,
     resampling_params: Dict[str, Any] | None,
-    tuning_n_candidates: int,
-    tuning_factor: int | float,
-    tuning_min_resources: int | str,
-    tuning_max_resources: int | str,
-    tuning_aggressive_elimination: bool,
+    tuning_n_iter: int,
     tuning_cv_inner_n_splits: int,
     tuning_scoring: str,
     tuning_n_jobs: int,
@@ -546,11 +449,12 @@ def train_and_evaluate_one_fold_all_models(
     2. For each **STATIC** model in ``static_models``:
        - builds the pipeline (preprocessing → feature selection → resampling → classifier),
        - tunes it with :func:`train_and_evaluate_one_fold_static_model`
-         using ``HalvingRandomSearchCV``,
+         using ``RandomizedSearchCV``,
        - extracts final selected features via :func:`get_final_selected_features`,
        - collects both resubstitution (train) and generalization (test) metrics.
     3. For each **DES** model in ``des_models``:
        - builds and tunes a bagging pool via :func:`train_and_evaluate_one_fold_des_model`,
+         which internally uses ``RandomizedSearchCV`` for the pool,
        - fits the DES model on a DSEL subset of the outer training set,
        - collects generalization (test) metrics and selected features.
     4. Returns two lists of rows (dicts) ready to be aggregated and saved
@@ -609,36 +513,25 @@ def train_and_evaluate_one_fold_all_models(
         Extra keyword arguments for the sampler constructor
         (e.g. ``sampling_strategy``, ``random_state``, ``k_neighbors``).
         If ``None``, no extra kwargs are passed.
-    tuning_n_candidates : int
-        Value passed as ``n_candidates`` to ``HalvingRandomSearchCV`` for
-        both STATIC and DES pool tuning.
-    tuning_factor : int or float
-        ``factor`` parameter for ``HalvingRandomSearchCV`` (successive
-        halving ratio).
-    tuning_min_resources : int or {"smallest", "exhaust"}
-        ``min_resources`` parameter for ``HalvingRandomSearchCV`` defining
-        the initial resource level per candidate.
-    tuning_max_resources : int or {"auto"}
-        ``max_resources`` parameter for ``HalvingRandomSearchCV`` defining
-        the maximum resource level per candidate.
-    tuning_aggressive_elimination : bool
-        ``aggressive_elimination`` parameter for ``HalvingRandomSearchCV``,
-        controlling how aggressively candidates are discarded when the
-        resource budget is tight.
+    tuning_n_iter : int
+        Value passed as ``n_iter`` to ``RandomizedSearchCV`` for
+        both STATIC models and DES bagging pools.
     tuning_cv_inner_n_splits : int
         Number of stratified folds for the inner model-selection CV.
     tuning_scoring : str
-        Scoring metric passed to ``HalvingRandomSearchCV``
+        Scoring metric passed to ``RandomizedSearchCV``
         (e.g. ``"f1"``, ``"roc_auc"``, ``"average_precision"``).
     tuning_n_jobs : int
-        Number of parallel jobs for the halving search (``-1`` uses all
+        Number of parallel jobs for the randomized search (``-1`` uses all
         available cores).
     dsel_size : float
         Fraction of the outer training set reserved for the DSEL subset
         used to fit DES models (``0 < dsel_size < 1``).
     random_state : int
         Random seed forwarded to models, inner CV splitters and DSEL split
-        within this fold.
+        within this fold. In this implementation a per-fold offset
+        (``random_state + run_id``) is used for the inner tuning calls to
+        diversify configurations across folds.
     logger : loguru.Logger or None, optional
         Optional Loguru logger used for progress messages and fold-level
         diagnostics. When ``None`` (default), messages are printed to
@@ -672,6 +565,7 @@ def train_and_evaluate_one_fold_all_models(
     Typical usage inside the main outer CV loop::
 
         from loguru import logger
+        from sklearn.model_selection import RepeatedStratifiedKFold
 
         cv_outer = RepeatedStratifiedKFold(
             n_splits=10,
@@ -702,11 +596,7 @@ def train_and_evaluate_one_fold_all_models(
                 use_cost_sensitive_learning=True,
                 resampling_method="SMOTE",
                 resampling_params={"sampling_strategy": 0.2, "random_state": 42},
-                tuning_n_candidates=35,
-                tuning_factor=4,
-                tuning_min_resources=1500,
-                tuning_max_resources="auto",
-                tuning_aggressive_elimination=False,
+                tuning_n_iter=35,
                 tuning_cv_inner_n_splits=5,
                 tuning_scoring="average_precision",
                 tuning_n_jobs=-1,
@@ -777,11 +667,7 @@ def train_and_evaluate_one_fold_all_models(
             y_train=y_train,
             X_test=X_test,
             y_test=y_test,
-            n_candidates=tuning_n_candidates,
-            factor=tuning_factor,
-            min_resources=tuning_min_resources,
-            max_resources=tuning_max_resources,
-            aggressive_elimination=tuning_aggressive_elimination,
+            n_iter=tuning_n_iter,
             val_cv_split=tuning_cv_inner_n_splits,
             scoring=tuning_scoring,
             random_state=random_state + run_id,
@@ -855,11 +741,7 @@ def train_and_evaluate_one_fold_all_models(
             y_train=y_train,
             X_test=X_test,
             y_test=y_test,
-            n_candidates=tuning_n_candidates,
-            factor=tuning_factor,
-            min_resources=tuning_min_resources,
-            max_resources=tuning_max_resources,
-            aggressive_elimination=tuning_aggressive_elimination,
+            n_iter=tuning_n_iter,
             dsel_size=dsel_size,
             val_cv_split=tuning_cv_inner_n_splits,
             scoring=tuning_scoring,

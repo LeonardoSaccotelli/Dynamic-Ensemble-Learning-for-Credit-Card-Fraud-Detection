@@ -64,20 +64,16 @@ RESAMPLING_PARAMS = {}
 # outer evaluation setting: RepeatedStratifiedKFold (10 x 10)
 CV_OUTER_N_SPLITS = 10
 CV_OUTER_N_REPEATS = 10
-CV_OUTER_PARALLEL_N_JOBS = 10
+CV_OUTER_PARALLEL_N_JOBS = 1
 
 # inner evaluation setting for dynamical ensemble models
 DSEL_SIZE = 0.15
 
-# inner evaluation setting for hyperparameters tuning: HalvingRandomSearchCV
-TUNING_N_CANDIDATES = 30
-TUNING_MIN_RESOURCES = 1500
-TUNING_MAX_RESOURCES = "auto"
+# inner evaluation setting for hyperparameters tuning: RandomizedSearchCV
+TUNING_N_ITER = 30
 TUNING_CV_INNER_N_SPLITS = 5
-TUNING_AGGRESSIVE_ELIMINATION = False
-TUNING_FACTOR = 4
 TUNING_SCORING = "f1"
-TUNING_N_JOBS = 1
+TUNING_N_JOBS = -1
 
 # classic ML model + static ensemble models
 STATIC_MODELS = [
@@ -89,13 +85,7 @@ STATIC_MODELS = [
     "XGBClassifier",
 ]
 
-DES_MODELS = [
-    "LCA",
-    "DESClustering",
-    "DESP",
-    "KNORAU",
-    "METADES"
-]
+DES_MODELS = ["LCA", "DESClustering", "DESP", "KNORAU", "METADES"]
 
 #################################################################
 # If tqdm is installed, configure loguru with tqdm.write
