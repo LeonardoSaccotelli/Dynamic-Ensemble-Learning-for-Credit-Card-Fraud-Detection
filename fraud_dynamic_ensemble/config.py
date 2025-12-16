@@ -1,4 +1,3 @@
-from datetime import datetime
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -46,8 +45,7 @@ DAY_SECONDS = 86_400.0  # 24 * 60 * 60
 #################################################################
 # train.py parameters
 # experiment tracking
-EXPERIMENT_RUN_ID = f"run_{datetime.now().strftime('%Y_%m_%d__%H_%M_%S')}"
-EXPERIMENT_NAME = "NoResampling_KBest25_HalvingRandomSearchCV35Iter_5FoldsInnerCV"
+EXPERIMENT_NAME = "CostSensitiveLearning_KBest25_RandomizedSearchCV30Iter_InnerCV5Folds"
 EXPERIMENT_DESCRIPTION = ""
 
 # feature transformation
@@ -57,7 +55,7 @@ NUMERICAL_FEATURES_TO_STANDARDIZE = ["Amount_log1p"]
 FS_K_BEST_TO_KEEP = 25
 
 # resampling method
-USE_COST_SENSITIVE_LEARNING = False
+USE_COST_SENSITIVE_LEARNING = True
 RESAMPLING_METHOD = None
 RESAMPLING_PARAMS = {}
 
