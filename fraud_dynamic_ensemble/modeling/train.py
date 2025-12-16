@@ -15,7 +15,6 @@ from fraud_dynamic_ensemble.config import (
     DSEL_SIZE,
     EXPERIMENT_DESCRIPTION,
     EXPERIMENT_NAME,
-    EXPERIMENT_RUN_ID,
     FS_K_BEST_TO_KEEP,
     MODELS_DIR,
     NUMERICAL_FEATURES_TO_STANDARDIZE,
@@ -59,39 +58,42 @@ def main(
       1) loads the processed features CSV,
       2) shuffles and splits features/labels,
       3) builds a RepeatedStratifiedKFold outer loop,
-      4) executes all outer folds (sequentially or in parallel, depending on
-         ``outer_n_jobs``); for each outer fold it:
+      4) executes all outer folds (sequentially or in parallel, depending on ``outer_n_jobs``);
+         for each outer fold it:
          - tunes and evaluates each STATIC model
            (pipeline: scaling → feature selection → resampling → classifier),
-         - tunes a bagging pool, fits a DES model on DSEL, and evaluates the
+         - tunes a bagging pool, fits each DES model on DSEL, and evaluates the
            DES pipeline on the outer test fold,
-      5) logs and persists configuration and per-fold results as CSVs.
+      5) aggregates fold-level rows in memory, then persists results **per model**
+         under the experiment folder.
 
     Parameters
     ----------
     input_path : pathlib.Path, default=PROCESSED_DATA_DIR / PROCESSED_FILENAME
-        Path to the **processed** dataset (CSV) containing engineered features
-        and the target column.
+        Path to the **processed** dataset (CSV) containing engineered features and the
+        target column.
     experiment_name : str, default=EXPERIMENT_NAME
-        Human-readable experiment label used to build the run folder name.
+        Experiment folder name created under ``model_path``.
     experiment_description : str, default=EXPERIMENT_DESCRIPTION
-        Free-text description stored in the run’s ``experiment_config.json``.
+        Free-text description stored in each model folder’s ``experiment_config.json``.
     model_path : pathlib.Path, default=MODELS_DIR
-        Root directory where the experiment subfolder will be created and
-        results saved.
+        Root directory where the experiment folder will be created and results saved.
     target : str, default="Class"
         Name of the target column in ``input_path``.
     outer_n_jobs : int, default=CV_OUTER_PARALLEL_N_JOBS
         Number of outer CV folds to execute in parallel.
         - ``1``  → sequential execution of outer folds (current behaviour).
         - ``>1`` → parallelize outer folds with :mod:`joblib.Parallel`.
-          In this case it is usually recommended to set the inner tuning
-          parameter ``TUNING_N_JOBS`` to ``1`` to avoid nested parallelism.
+          In this case it is usually recommended to set the inner tuning parameter
+          ``TUNING_N_JOBS`` to ``1`` to avoid nested parallelism.
 
     Side Effects
     ------------
-    - Creates/updates files under ``<MODELS_DIR>/<RUN_ID>_<experiment_name>/``.
-    - Writes experiment configuration and two CSV summaries.
+    - Creates/updates files under ``<MODELS_DIR>/<experiment_name>/<MODEL_NAME>/``.
+    - Writes one configuration JSON and up to two CSV summaries per model:
+      - ``generalization_metrics_summary.csv`` (always, STATIC + DES)
+      - ``resubstitution_metrics_summary.csv`` (STATIC only; skipped for DES-only models)
+      - ``experiment_config.json`` (same experiment settings replicated in each model folder)
     - Produces extensive logging via the configured :mod:`loguru` ``logger``.
 
     Raises
@@ -103,75 +105,29 @@ def main(
 
     Notes
     -----
-    Workflow
-    - **Tracking & config dump**:
-      creates ``<MODELS_DIR>/<RUN_ID>_<experiment_name>/`` and writes
-      ``experiment_config.json`` with all key settings (outer CV, scaling,
-      feature selection, resampling, tuning hyperparameters, model lists).
-    - **Data loading**:
-      reads ``input_path`` CSV; logs shape and global class distribution.
-    - **Shuffle & split**:
-      shuffles the dataset with ``RANDOM_STATE``; separates ``X`` and ``y``
-      and converts them to NumPy arrays.
-    - **Preprocessing indices & feature order**:
-      uses :func:`build_standardization_and_feature_order` to
-      - validate the requested features to standardize,
-      - map them to column indices used by the scaler, and
-      - obtain the post-preprocessing feature names, which are later passed
-        to :func:`get_final_selected_features`.
-    - **Outer CV**:
-      ``RepeatedStratifiedKFold(n_splits=CV_OUTER_N_SPLITS,
-      n_repeats=CV_OUTER_N_REPEATS, random_state=RANDOM_STATE)`` defines the
-      outer evaluation loop. Outer folds can be run sequentially or in
-      parallel depending on ``outer_n_jobs``.
-    - **STATIC models per outer fold**:
-      for each model in ``STATIC_MODELS`` it:
-        * builds the pipeline with :func:`build_model_pipeline`,
-        * obtains the estimator and search space via
-          :func:`get_static_model_and_search_space`,
-        * performs hyperparameter tuning with
-          :class:`sklearn.model_selection.HalvingRandomSearchCV` inside
-          :func:`train_and_evaluate_one_fold_static_model`,
-        * computes resubstitution and test metrics via
-          :func:`compute_classification_metrics`,
-        * extracts selected features via
-          :func:`get_final_selected_features`,
-        * appends rows to the resubstitution and generalization summaries
-          via :func:`collect_report_one_fold`.
-    - **DES models per outer fold**:
-      for each model in ``DES_MODELS`` it:
-        * builds a bagging pool and DES configuration via
-          :func:`get_des_model`,
-        * builds the pool pipeline with :func:`build_model_pipeline`,
-        * tunes the pool with :class:`HalvingRandomSearchCV` and
-          splits TRAIN into pool-training and DSEL inside
-          :func:`train_and_evaluate_one_fold_des_model`,
-        * fits the DES model on DSEL (transformed space),
-        * evaluates the final DES pipeline on the outer test fold and logs
-          the metrics via :func:`collect_report_one_fold`.
-    - **Persistence**:
-      writes two CSV files under the experiment folder:
-        * ``resubstitution_metrics_summary.csv``
-        * ``generalization_metrics_summary.csv``.
-      These contain one row per model, per outer fold, per data split
-      (resubstitution/test), including confusion-matrix counts, metrics,
-      tuning summaries and selected feature information.
-    - Tuning can be computationally intensive; configure
-      ``TUNING_N_CANDIDATES``, ``TUNING_FACTOR``, ``TUNING_MIN_RESOURCES``,
-      ``TUNING_MAX_RESOURCES``, ``TUNING_AGGRESSIVE_ELIMINATION``,
-      ``TUNING_N_JOBS`` and ``TUNING_CV_INNER_N_SPLITS`` according to the
-      available computational resources and desired search budget.
+    Persistence layout
+    - Experiment root: ``<MODELS_DIR>/<experiment_name>/``
+    - For each model key found in the results (column ``model``), a folder is created:
+      ``<experiment_root>/<MODEL_NAME>/`` containing:
+      - ``generalization_metrics_summary.csv``
+      - ``resubstitution_metrics_summary.csv`` (only if present; typically STATIC models)
+      - ``experiment_config.json``
+
+    The two global CSV files previously written at the experiment root are no longer produced;
+    metrics are saved only inside model subfolders.
+
+    Tuning can be computationally intensive; configure
+    ``TUNING_N_ITER``, ``TUNING_N_JOBS`` and ``TUNING_CV_INNER_N_SPLITS`` according to the
+    available computational resources and desired search budget.
     """
 
     logger.info("Running fraud_dynamic_ensemble/train.py ...")
 
     # --- Set experiment folder and experiment tracking
-    experiment_id_name = f"{EXPERIMENT_RUN_ID}_{experiment_name}"
-    experiment_path = model_path / experiment_id_name
+    experiment_path = model_path / experiment_name
     experiment_path.mkdir(parents=True, exist_ok=True)
 
     experiment_tracking = {
-        "experiment_id_name": experiment_id_name,
         "experiment_description": experiment_description,
         "experiment_start_time": datetime.now().strftime("%Y/%m/%d-%H:%M:%S"),
         "use_cost_sensitive_learning": USE_COST_SENSITIVE_LEARNING,
@@ -185,11 +141,11 @@ def main(
         "tuning_hyperparameters_cv_splits": TUNING_CV_INNER_N_SPLITS,
         "tuning_hyperparameters_scoring": TUNING_SCORING,
         "tuning_hyperparameters_n_jobs": TUNING_N_JOBS,
-        "models_to_train": STATIC_MODELS,
+        "static_models_to_train": STATIC_MODELS,
         "des_models_to_train": DES_MODELS,
     }
 
-    logger.info(f"Initialized experiment: {experiment_id_name}")
+    logger.info(f"Initialized experiment: {experiment_name}")
 
     ################################# INITIAL CHECKS #################################
     # Preconditions
@@ -336,21 +292,69 @@ def main(
             resubstitution_metrics_summary.extend(resubstitution_rows)
             generalization_metrics_summary.extend(generalization_rows)
 
-    ############################### STORE EXPERIMENTAL RESULTS #####################################
-    resubstitution_metrics_summary = pd.DataFrame(resubstitution_metrics_summary)
-    resubstitution_metrics_summary.to_csv(
-        experiment_path / "resubstitution_metrics_summary.csv", index=False, sep=","
-    )
-
-    generalization_metrics_summary = pd.DataFrame(generalization_metrics_summary)
-    generalization_metrics_summary.to_csv(
-        experiment_path / "generalization_metrics_summary.csv", index=False, sep=","
-    )
-
     experiment_tracking["experiment_end_time"] = datetime.now().strftime("%Y/%m/%d-%H:%M:%S")
-    save_dict_json(
-        data=experiment_tracking, path=experiment_path / "experiment_config.json", mode="w"
-    )
+
+    ############################### STORE EXPERIMENTAL RESULTS #####################################
+    resubstitution_metrics_summary_df = pd.DataFrame(resubstitution_metrics_summary)
+    generalization_metrics_summary_df = pd.DataFrame(generalization_metrics_summary)
+
+    # Basic validation
+    if (not resubstitution_metrics_summary_df.empty) and (
+        "model" not in resubstitution_metrics_summary_df.columns
+    ):
+        raise ValueError("Missing 'model' column in resubstitution_metrics_summary.")
+    if (not generalization_metrics_summary_df.empty) and (
+        "model" not in generalization_metrics_summary_df.columns
+    ):
+        raise ValueError("Missing 'model' column in generalization_metrics_summary.")
+
+    # Union of models across both summaries (covers DES-only runs too)
+    models_in_results: set[str] = set()
+    if not resubstitution_metrics_summary_df.empty:
+        models_in_results |= set(resubstitution_metrics_summary_df["model"].astype(str).unique())
+    if not generalization_metrics_summary_df.empty:
+        models_in_results |= set(generalization_metrics_summary_df["model"].astype(str).unique())
+
+    if not models_in_results:
+        raise RuntimeError("No models found in results; nothing to persist.")
+
+    for model_name in sorted(models_in_results):
+        model_dir = experiment_path / model_name
+        model_dir.mkdir(parents=True, exist_ok=True)
+
+        # Filter rows for the model
+        resubstitution_metrics_model = (
+            resubstitution_metrics_summary_df[
+                resubstitution_metrics_summary_df["model"].astype(str) == model_name
+            ].copy()
+            if not resubstitution_metrics_summary_df.empty
+            else None
+        )
+        generalization_metrics_model = (
+            generalization_metrics_summary_df[
+                generalization_metrics_summary_df["model"].astype(str) == model_name
+            ].copy()
+            if not generalization_metrics_summary_df.empty
+            else None
+        )
+
+        # Generalization always expected for both STATIC and DES
+        if generalization_metrics_model is None or generalization_metrics_model.empty:
+            raise RuntimeError(f"No generalization rows found for model='{model_name}'.")
+        generalization_metrics_model.to_csv(
+            model_dir / "generalization_metrics_summary.csv", index=False, sep=","
+        )
+
+        # Resubstitution only for STATIC models; DES -> skip if empty
+        if resubstitution_metrics_model is not None and (not resubstitution_metrics_model.empty):
+            resubstitution_metrics_model.to_csv(
+                model_dir / "resubstitution_metrics_summary.csv", index=False, sep=","
+            )
+
+        # Store experiment settings
+        save_dict_json(
+            data=experiment_tracking, path=model_dir / "experiment_config.json", mode="w"
+        )
 
     logger.success("Running fraud_dynamic_ensemble/train.py COMPLETED!")
 
