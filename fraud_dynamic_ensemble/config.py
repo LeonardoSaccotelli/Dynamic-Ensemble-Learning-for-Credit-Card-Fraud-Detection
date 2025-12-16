@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -44,15 +46,16 @@ DAY_SECONDS = 86_400.0  # 24 * 60 * 60
 
 #################################################################
 # train.py parameters
-# experiment tracking
-EXPERIMENT_NAME = "CostSensitiveLearning_KBest25_RandomizedSearchCV30Iter_InnerCV5Folds"
-EXPERIMENT_DESCRIPTION = ""
 
 # feature transformation
 NUMERICAL_FEATURES_TO_STANDARDIZE = ["Amount_log1p"]
 
 # feature selection
-FS_K_BEST_TO_KEEP = 25
+FS_K_BEST_TO_KEEP: int | str = 20
+
+# Candidate values used by RandomizedSearchCV to tune SelectKBest.
+# NOTE: ensure each int <= n_features AFTER preprocessing. "all" is allowed.
+FS_K_BEST_CANDIDATES: list[int | str] = [20, 22, 24, 26, 28, "all"]
 
 # resampling method
 USE_COST_SENSITIVE_LEARNING = True
@@ -83,7 +86,17 @@ STATIC_MODELS = [
     "XGBClassifier",
 ]
 
-DES_MODELS = ["LCA", "DESClustering", "DESP", "KNORAU", "METADES"]
+DES_MODELS = [
+    "LCA",
+    "DESClustering",
+    "DESP",
+    "KNORAU",
+    "METADES"
+]
+
+# experiment tracking
+EXPERIMENT_NAME = f"CostSensitiveLearning___RandomizedSearchCV__niter_{TUNING_N_ITER}__cv_{TUNING_CV_INNER_N_SPLITS}"
+EXPERIMENT_DESCRIPTION = ""
 
 #################################################################
 # If tqdm is installed, configure loguru with tqdm.write

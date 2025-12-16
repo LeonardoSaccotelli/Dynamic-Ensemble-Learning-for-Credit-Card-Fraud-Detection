@@ -187,7 +187,9 @@ def _boosting_core_param_space(
 
 
 def get_static_model_and_search_space(
-    model_name: str, random_state: int | None = None, use_cost_sensitive_learning: bool = True
+    model_name: str,
+    random_state: int | None = None,
+    use_cost_sensitive_learning: bool = True,
 ) -> tuple[BaseEstimator, Dict[str, Any]]:
     """
     Build a classifier instance and its hyperparameter search space.
@@ -200,7 +202,7 @@ def get_static_model_and_search_space(
 
     The parameter names in the returned ``param_dist`` assume that your
     estimator is wrapped in a scikit-learn ``Pipeline`` step called
-    ``"classifier"``, so all hyperparameters are prefixed with
+    ``"classifier"``, so all estimator hyperparameters are prefixed with
     ``"classifier__"`` (e.g. ``"classifier__C"``, ``"classifier__n_estimators"``).
 
     Parameters
@@ -259,22 +261,29 @@ def get_static_model_and_search_space(
     estimator : sklearn.base.BaseEstimator
         The configured classifier instance (not fitted).
     param_dist : dict
-        Mapping of hyperparameter names to SciPy distributions or lists,
-        suitable for ``RandomizedSearchCV`` or ``HalvingRandomSearchCV``
-        (via the ``param_distributions=...`` argument). All names are
-        prefixed with ``"classifier__"`` to match a Pipeline step named
-        ``"classifier"``.
+        Mapping of **estimator** hyperparameter names to SciPy distributions
+        or lists, suitable for ``RandomizedSearchCV`` or
+        ``HalvingRandomSearchCV`` (via the ``param_distributions=...`` argument).
+        All names are prefixed with ``"classifier__"`` to match a Pipeline step
+        named ``"classifier"``.
 
     Raises
     ------
     ValueError
         If ``model_name`` is not one of the supported keys.
     ImportError
-        If the requested model requires an optional dependency that is not
-        installed (e.g., ``xgboost``, ``imbalanced-learn``).
+        If optional dependencies are not installed (e.g., ``xgboost``,
+        ``imbalanced-learn``). Note that these errors may occur at import time.
 
     Notes
     -----
+    Separation of concerns (important)
+        This function returns an estimator and an **estimator-only** search space.
+        It intentionally does **not** include pipeline-level hyperparameters
+        (e.g., ``feature_selection_filter__k`` for ``SelectKBest``). Those must be
+        injected by the orchestration layer (e.g., ``train.py``) that builds the
+        full pipeline, because they depend on your pipeline topology and step names.
+
     Imbalance handling (when ``use_cost_sensitive_learning=True``)
         - Many tree-based models are initialized with
           ``class_weight='balanced'`` or ``'balanced_subsample'``.
@@ -293,63 +302,35 @@ def get_static_model_and_search_space(
           rates, regularization strengths) use
           ``scipy.stats.loguniform(low, high)``.
         - Tree-based models share a common structural search space via
-          ``_tree_common_param_space()``, which controls:
-          ``max_depth``, ``min_samples_split``, ``min_samples_leaf``,
-          ``max_features``, ``max_leaf_nodes``, ``min_impurity_decrease``,
-          and ``ccp_alpha``.
-        - Boosting algorithms (AdaBoost, LogitBoost, XGBoost, RUSBoost)
-          share a core search space via ``_boosting_core_param_space()``,
-          which tunes ``n_estimators`` and ``learning_rate``; each model
-          then adds its own structural and regularization parameters.
+          ``_tree_common_param_space()``.
+        - Boosting algorithms share a core search space via
+          ``_boosting_core_param_space()``.
 
     Model-specific behaviour
         - SVC:
-          ``probability=True`` is enabled to provide calibrated probabilities
-          (slower than using the decision function). The search space covers
-          ``C``, ``gamma``, and the kernel family
-          ``{'rbf', 'poly', 'linear'}``, including the polynomial degree.
+          ``probability=True`` is enabled to provide calibrated probabilities.
+          The search space covers ``C``, ``gamma``, kernel family
+          ``{'rbf', 'poly', 'linear'}``, and polynomial degree.
         - MLPClassifier:
-          Uses ``early_stopping=True`` with a large ``max_iter`` and searches
-          over hidden layer sizes, L2 regularization (``alpha``), initial
-          learning rate, and ``batch_size``.
-        - Tree ensembles (DecisionTree, RandomForest, ExtraTrees,
-          BalancedRandomForest):
-          Share the tree-structure search space (depth, splits, leaves,
-          features, leaf nodes, impurity decrease, pruning strength), with
-          additional model-specific parameters such as the number of trees
-          and ``max_samples`` for bagging.
+          Uses ``early_stopping=True`` and searches over hidden layer sizes,
+          L2 regularization (``alpha``), initial learning rate, and ``batch_size``.
+        - Tree ensembles:
+          Share the tree-structure search space with additional parameters
+          such as number of trees and (where applicable) sample subsampling.
         - BaggingDecisionTreeClassifier:
-          Wraps a class-balanced ``DecisionTreeClassifier`` inside a
-          ``BaggingClassifier``. The search space includes both
-          bagging-level parameters (``n_estimators``, ``max_samples``,
-          ``max_features``) and the internal tree structure, using the
-          ``"classifier__estimator__"`` prefix (e.g.
-          ``classifier__estimator__max_depth``).
-        - Gradient/Ada/LogitBoost:
-          ``LogitBoostClassifier`` is implemented with
-          ``GradientBoostingClassifier(loss='log_loss')`` and tunes the
-          boosting core parameters, shallow tree structure (depth, leaf size,
-          max features), and subsampling rate.
-          ``AdaBoostClassifier`` and ``RUSBoostClassifier`` tune only the
-          boosting core (number of stages and learning rate), using decision
-          stumps as base learners by default.
+          Tunes bagging-level parameters plus the internal tree structure via
+          ``classifier__estimator__...``.
+        - LogitBoostClassifier:
+          Implemented as ``GradientBoostingClassifier(loss='log_loss')`` and tunes
+          boosting core parameters plus shallow-tree structure.
         - XGBClassifier:
-          Tunes boosting core parameters, tree capacity
-          (``max_depth``, ``min_child_weight``), stochasticity
-          (``subsample``, ``colsample_bytree``), regularization
-          (``reg_alpha``, ``reg_lambda``, ``gamma``), and
-          ``scale_pos_weight`` for class imbalance (unless explicitly
-          disabled via ``use_cost_sensitive_learning=False``).
+          Tunes boosting core parameters, tree capacity, stochasticity,
+          regularization, and optionally ``scale_pos_weight``.
 
     Pipeline naming
         The returned ``param_dist`` assumes that the estimator is wrapped in
-        a Pipeline step named ``"classifier"``. For example:
-
-        ``Pipeline([('classifier', <estimator>)])``
-
-        so that all hyperparameters can be referenced as
-        ``"classifier__<param_name>"`` in ``RandomizedSearchCV`` or
-        ``HalvingRandomSearchCV``.
+        a Pipeline step named ``"classifier"`` so hyperparameters are referenced
+        as ``classifier__<param_name>``.
 
     Examples
     --------
@@ -358,28 +339,34 @@ def get_static_model_and_search_space(
     >>> from sklearn.pipeline import Pipeline
     >>> from sklearn.model_selection import RandomizedSearchCV
     >>> clf, space = get_static_model_and_search_space(
-    ...     'RandomForestClassifier',
+    ...     "RandomForestClassifier",
     ...     random_state=42,
     ... )
-    >>> pipe = Pipeline([('classifier', clf)])
+    >>> pipe = Pipeline([("classifier", clf)])
     >>> search = RandomizedSearchCV(
     ...     estimator=pipe,
     ...     param_distributions=space,
     ...     n_iter=30,
     ...     cv=5,
-    ...     scoring='average_precision',
+    ...     scoring="average_precision",
     ...     random_state=42,
     ...     n_jobs=-1,
     ... )
 
-    Switch to XGBoost with the same interface, disabling cost-sensitive tweaks:
+    Extend the search space with a pipeline-level SelectKBest ``k`` (done outside models.py):
+
+    >>> # suppose your full pipeline has a step named "feature_selection_filter"
+    >>> extended_space = dict(space)
+    >>> extended_space["feature_selection_filter__k"] = [10, 20, 30, "all"]
+
+    Switch to XGBoost, disabling cost-sensitive tweaks:
 
     >>> clf, space = get_static_model_and_search_space(
-    ...     'XGBClassifier',
+    ...     "XGBClassifier",
     ...     random_state=42,
     ...     use_cost_sensitive_learning=False,
     ... )
-    >>> pipe = Pipeline([('classifier', clf)])
+    >>> pipe = Pipeline([("classifier", clf)])
     >>> search = RandomizedSearchCV(
     ...     estimator=pipe,
     ...     param_distributions=space,
@@ -717,8 +704,9 @@ def get_static_model_and_search_space(
                 config["model_args"]["class_weight"] = None
 
     model = config["model_class"](**config["model_args"])
+    param_dist: Dict[str, Any] = dict(config["param_dist"])
 
-    return model, config["param_dist"]
+    return model, param_dist
 
 
 def get_des_model(
@@ -734,19 +722,21 @@ def get_des_model(
       1) a **bagging pool estimator** (intended for the ``"classifier"`` step of your
          training pipeline) **plus** its hyperparameter search space; and
       2) an **unfitted DES model instance** **plus** a dictionary of default kwargs
-         you can apply later (e.g., via ``set_params``) together with the tuned pool.
+         to be applied later (typically via ``des_model.set_params(**des_kwargs)``)
+         together with the tuned pool (``pool_classifiers=...``).
 
-    The typical two-stage process is:
+    The intended two-stage process is:
 
     1. **Pool tuning (TRAIN)**:
-       plug ``pool_estimator`` into your pipeline, tune it with
-       ``pool_param_dist`` on the training data, and extract the tuned bagger
-       (e.g., ``best_pipe.named_steps["classifier"]``).
+       plug ``pool_estimator`` into your pipeline (as the ``"classifier"`` step),
+       tune it with ``pool_param_dist`` on the pool-training subset, and extract the
+       tuned bagger (e.g., ``best_pipe.named_steps["classifier"]``).
 
     2. **DES fitting (DSEL)**:
-       inject the tuned pool into the returned ``des_model`` via
-       ``des_model.set_params(pool_classifiers=fitted_pool)``, then fit it on
-       preprocessed DSEL data.
+       preprocess DSEL with the **same fitted preprocessing** used for the pool,
+       inject the tuned pool into the DES model via
+       ``des_model.set_params(pool_classifiers=fitted_pool)``, then fit the DES
+       model on the transformed DSEL data.
 
     Parameters
     ----------
@@ -757,43 +747,32 @@ def get_des_model(
     random_state : int or None, optional
         Forwarded to the **pool** via
         :func:`get_static_model_and_search_space("BaggingDecisionTreeClassifier")`.
-        The DES instance itself is created with library defaults; if you need to
-        control its randomness (when supported), apply ``des_kwargs`` via
-        ``des_model.set_params(**des_kwargs)`` or pass overrides manually.
+        The DES instance itself is created without passing constructor kwargs in
+        this factory; if the chosen DES method exposes randomness control, apply
+        it later through ``des_kwargs`` and/or explicit overrides.
     use_cost_sensitive_learning : bool, default=True
-        Whether to configure the **pool** for cost-sensitive learning on
-        imbalanced data. This flag is passed directly to
-        :func:`get_static_model_and_search_space("BaggingDecisionTreeClassifier")`:
-
-        - If ``True``, the internal ``DecisionTreeClassifier`` and the bagging
-          ensemble are configured with imbalance-aware defaults (e.g.,
-          ``class_weight='balanced'``).
-        - If ``False``, the bagging pool is built without cost-sensitive tweaks
-          (no class weights, no internal imbalance heuristics).
+        Whether to configure the **pool** for cost-sensitive learning on imbalanced
+        data. This flag is passed to
+        :func:`get_static_model_and_search_space("BaggingDecisionTreeClassifier")`.
 
     Returns
     -------
-    pool_estimator : sklearn.ensemble.BaggingClassifier
-        Bagging ensemble configured (optionally) for imbalanced data. The base
-        estimator is a ``DecisionTreeClassifier``; use this in your pipeline's
-        ``"classifier"`` step during the pool tuning stage.
+    pool_estimator : sklearn.base.BaseEstimator
+        Bagging ensemble used as the DES pool during tuning/fitting. Intended to be
+        inserted into a pipeline as the ``"classifier"`` step during the pool-tuning stage.
     pool_param_dist : dict
-        Hyperparameter search space for the pool, including bagging-level params
+        Hyperparameter search space for the pool. Keys follow scikit-learn pipeline
+        conventions and assume the pool is in a Pipeline step named ``"classifier"``
         (e.g., ``classifier__n_estimators``, ``classifier__max_samples``,
-        ``classifier__max_features``) and internal tree params
-        (e.g., ``classifier__estimator__max_depth``, ``...__min_samples_leaf``,
-        ``...__ccp_alpha``). Suitable for use with ``RandomizedSearchCV`` or
-        ``HalvingRandomSearchCV`` via the ``param_distributions=...`` argument.
+        ``classifier__estimator__max_depth``).
     des_model : sklearn.base.BaseEstimator
-        **Unfitted** DESlib estimator instance (e.g., ``KNORAE``, ``METADES``).
-        Created with library defaults (no kwargs applied yet). You are expected
-        to inject the tuned pool later with:
-
-        ``des_model.set_params(pool_classifiers=fitted_pool)``.
+        **Unfitted** DESlib estimator instance (e.g., ``KNORAE``, ``METADES``),
+        created without applying ``des_kwargs`` yet.
     des_kwargs : dict
-        Suggested default keyword arguments for the chosen DES (e.g., ``k``,
-        ``DFP``, ``IH_rate``, ``voting``, ``n_jobs``). This dict **does not**
-        include ``pool_classifiers``; you must add it before fitting.
+        Default kwargs for the DES model (e.g., ``k``, ``DFP``, ``IH_rate``,
+        ``voting``, ``n_jobs``). This dict does **not** include ``pool_classifiers``;
+        callers typically add it before fitting. Consider copying this dict before
+        mutating it to avoid side effects across calls.
 
     Raises
     ------
@@ -802,25 +781,61 @@ def get_des_model(
 
     Notes
     -----
-    - **Pool format:**
-      Many DES methods accept either a list of fitted base estimators or the
-      fitted bagging object itself as ``pool_classifiers``. Choose according
-      to the DES method’s API and your design choice.
-    - **Preprocessing alignment:**
-      The DSEL set must be transformed with the **same fitted preprocessing**
-      used for pool training before calling ``des_model.fit``. Typically this
-      is handled by building a final pipeline:
+    Separation of concerns (important)
+        This function returns an estimator and an **estimator-only** pool search space.
+        It intentionally does **not** include pipeline-level hyperparameters such as
+        ``feature_selection_filter__k``; those must be injected by the orchestration
+        layer that builds the full pipeline (e.g., ``train.py``), because they depend on
+        the pipeline topology and step names.
 
-      ``Pipeline(preprocessing_steps + [('classifier', des_model)])``
+    Pool format
+        DESlib methods may accept:
+        - the fitted bagging estimator itself as ``pool_classifiers``, or
+        - a list/array of fitted base estimators.
+        If a DES method requires a list, you may need to pass something like
+        ``fitted_pool.estimators_`` instead of the bagger object.
 
-      and calling ``final_pipeline.fit(X_dsel_trans, y_dsel)``.
+    Preprocessing alignment
+        In the common pattern used by :func:`train_and_evaluate_one_fold_des_model`,
+        preprocessing is fit during pool training, then DSEL is transformed via that
+        fitted preprocessing and the DES model is fit on the transformed DSEL data
+        (e.g., ``des_model.fit(X_dsel_trans, y_dsel)``). The final inference pipeline
+        is assembled afterwards as ``Pipeline(fitted_preproc.steps + [('classifier', des_model)])``
+        and used for prediction on raw ``X_test``.
 
     Examples
     --------
+    Obtain pool + DES configuration:
+
     >>> pool_est, pool_space, des, des_kwargs = get_des_model(
     ...     "KNORAE",
     ...     random_state=42,
     ...     use_cost_sensitive_learning=True,
+    ... )
+
+    Typical integration (high-level) using your fold helper:
+
+    >>> pool_est, pool_space, des, des_kwargs = get_des_model("KNORAU", random_state=42)
+    >>> pool_pipe = build_model_pipeline(
+    ...     estimator=pool_est,
+    ...     numerical_features_to_standardize=idx_num_features_to_standardize,
+    ...     fs_k_best_to_keep=20,
+    ...     resampling_method="SMOTE",
+    ...     resampling_params={"sampling_strategy": 0.2, "random_state": 42},
+    ... )
+    >>> final_pipe, test_metrics = train_and_evaluate_one_fold_des_model(
+    ...     des_model=des,
+    ...     des_conf=dict(des_kwargs),          # copy, then mutate safely
+    ...     pool_classifiers=pool_pipe,
+    ...     search_space=pool_space,
+    ...     X_train=X_train, y_train=y_train,
+    ...     X_test=X_test,   y_test=y_test,
+    ...     n_iter=35,
+    ...     dsel_size=0.2,
+    ...     val_cv_split=5,
+    ...     scoring="average_precision",
+    ...     random_state=42,
+    ...     n_jobs=-1,
     ... )
     """
     # Pool: BaggingDecisionTreeClassifier + its search space

@@ -61,24 +61,24 @@ def train_and_evaluate_one_fold_static_model(
     Parameters
     ----------
     base_model : imblearn.pipeline.Pipeline or sklearn.pipeline.Pipeline or BaseEstimator
-        Estimator/pipeline to optimize. Must implement ``fit`` and ``predict``. If you
-        rely on probability-based metrics (e.g., ROC-AUC, Average Precision), it should
-        also implement ``predict_proba`` (or you must adapt the code to use
-        ``decision_function``).
+        Estimator/pipeline to optimize. Must implement ``fit`` and ``predict``.
+        This implementation also calls ``predict_proba`` to compute probability-based
+        metrics and will fail if it is not available.
     search_space : dict
         Parameter distributions for ``RandomizedSearchCV``. Keys must match the
-        estimator (or pipeline step) names, e.g. ``"classifier__C"``,
-        ``"classifier__max_depth"``.
+        estimator (or pipeline step) parameter names, using scikit-learn’s
+        double-underscore convention, e.g.:
+        - ``"classifier__C"``, ``"classifier__max_depth"``
+        - ``"feature_selection_filter__k"`` (to tune SelectKBest ``k``)
+        - ``"preprocessor__..."`` (if your preprocessor exposes tunable params)
     X_train, X_test : array-like of shape (n_samples, n_features)
         Training and test features.
     y_train, y_test : array-like of shape (n_samples,)
         Training and test labels.
     n_iter : int
-        Number of parameter settings sampled by ``RandomizedSearchCV``. Each
-        candidate is drawn at random from ``search_space``.
+        Number of parameter settings sampled by ``RandomizedSearchCV``.
     val_cv_split : int, default=5
-        Number of stratified folds used during the hyperparameter search
-        (inner CV for model selection).
+        Number of stratified folds used during the hyperparameter search (inner CV).
     scoring : str, default="f1"
         Optimization metric passed to ``RandomizedSearchCV`` (e.g., ``"f1"``,
         ``"average_precision"``, ``"roc_auc"``).
@@ -86,61 +86,63 @@ def train_and_evaluate_one_fold_static_model(
         Random seed for both the ``StratifiedKFold`` splitter (with shuffling) and
         the ``RandomizedSearchCV`` search process.
     n_jobs : int, default=-1
-        Number of parallel jobs for the randomized search (``-1`` uses all available
-        cores). The underlying estimators should typically use ``n_jobs=1`` to
-        avoid nested parallelism.
+        Number of parallel jobs for the randomized search (``-1`` uses all available cores).
+        The underlying estimators should typically use ``n_jobs=1`` to avoid nested parallelism.
 
     Returns
     -------
     best_model : imblearn.pipeline.Pipeline or sklearn.pipeline.Pipeline or BaseEstimator
-        The refit estimator corresponding to the best hyperparameter configuration
-        found by ``RandomizedSearchCV``.
+        The refit estimator corresponding to the best hyperparameter configuration.
     tuning_results : dict
         Summary of the tuning at the best index, including:
         - ``cv_tuning_mean_train_score`` : float
         - ``cv_tuning_std_train_score`` : float
         - ``cv_tuning_mean_val_score`` : float
         - ``cv_tuning_std_val_score`` : float
-        - ``best_params`` : dict of the best hyperparameters
-        - ``tuning_time`` : float, total search time in seconds
+        - ``best_params`` : dict
+        - ``tuning_time`` : float (seconds)
     resubstitution_metrics : dict[str, float]
         Metrics on the training set computed via ``compute_classification_metrics``.
-        Includes confusion-matrix counts and derived metrics (e.g., accuracy, f1,
-        balanced accuracy, ROC-AUC, Average Precision, kappa, MCC, etc.).
     test_metrics : dict[str, float]
         Metrics on the test set computed via ``compute_classification_metrics``,
-        plus:
-        - ``"score_time"`` : float, seconds required to generate test predictions.
+        plus ``"score_time"`` (seconds to generate test predictions).
+
+    Raises
+    ------
+    AttributeError
+        If ``best_model`` does not implement ``predict_proba`` (this function uses
+        ``predict_proba(X)[:, 1]``).
+    ValueError
+        If ``RandomizedSearchCV`` fails due to invalid ``search_space`` keys or an
+        incompatible ``scoring`` metric.
 
     Notes
     -----
-    - The CV splitter used inside ``RandomizedSearchCV`` is
-      ``StratifiedKFold(n_splits=val_cv_split, shuffle=True, random_state=random_state)``
-      to preserve class proportions across folds.
-    - Hyperparameter names in ``search_space`` must align with your pipeline
-      step names and scikit-learn’s double-underscore convention.
-    - ``RandomizedSearchCV`` explores the hyperparameter space by sampling
-      random configurations from the specified distributions. Increasing
-      ``n_iter`` improves the coverage of the search space at the cost of
-      higher computation time.
-    - For strict reproducibility, the combination of ``random_state`` for both
-      the splitter and the randomized search ensures deterministic behaviour given
-      the same data and configuration.
+    - **Binary classification assumption:** probabilities are extracted as
+      ``predict_proba(... )[:, 1]`` (positive class). If you generalize beyond
+      binary classification, this must be adapted.
+    - The inner CV splitter is
+      ``StratifiedKFold(n_splits=val_cv_split, shuffle=True, random_state=random_state)``.
+    - ``return_train_score=True`` is enabled so train CV scores are available in
+      ``search.cv_results_`` for reporting.
 
     Examples
     --------
-    Optimize a pipeline and evaluate:
+    Optimize a pipeline (including tuning SelectKBest ``k``) and evaluate:
 
-    >>> splitter_metric = "average_precision"
-    >>> best_model, tuning, resubstitution_metrics, test_metrics = (
+    >>> search_space = {
+    ...     "feature_selection_filter__k": [10, 20, 30, "all"],
+    ...     "classifier__C": loguniform(1e-3, 1e3),
+    ... }
+    >>> best_model, tuning, resub_metrics, test_metrics = (
     ...     train_and_evaluate_one_fold_static_model(
-    ...         base_model=base_model,          # e.g., ImbPipeline([... ('classifier', clf)])
+    ...         base_model=base_model,
     ...         search_space=search_space,
     ...         X_train=X_train, y_train=y_train,
     ...         X_test=X_test,   y_test=y_test,
-    ...         n_iter=35,
+    ...         n_iter=30,
     ...         val_cv_split=5,
-    ...         scoring=splitter_metric,
+    ...         scoring="average_precision",
     ...         random_state=42,
     ...         n_jobs=-1,
     ...     )
@@ -234,50 +236,47 @@ def train_and_evaluate_one_fold_des_model(
     Workflow
     --------
     1) Split the provided outer training set into:
-       - **pool-training** subset: to tune/fit the base ensemble
+       - **pool-training** subset: used to tune/fit the base pool pipeline
          (``pool_classifiers``) with ``RandomizedSearchCV``.
-       - **DSEL** subset: to fit the DES competence model.
+       - **DSEL** subset: used to fit the DES competence model.
     2) Tune and refit ``pool_classifiers`` on the pool-training subset.
     3) From the best pool pipeline:
-       - Extract the **fitted preprocessing** (e.g., preprocessor + feature selection),
-         **excluding** the ``"resampling"`` and ``"classifier"`` steps.
-       - Extract the tuned **classifier** step to be used as the **pool**.
-    4) Transform the DSEL data with the fitted preprocessing and **fit the DES model**
-       on ``(X_dsel_trans, y_dsel)`` with the injected pool.
-    5) Build the **final inference pipeline** = ``preprocessing -> DES``.
+       - Extract the **fitted preprocessing** steps (e.g., ``"preprocessor"`` and
+         ``"feature_selection_filter"``), i.e. all steps **before** ``"resampling"``.
+       - Extract the tuned **classifier** step to be used as the fitted **pool**.
+    4) Transform the DSEL data with the fitted preprocessing and fit the DES model on
+       ``(X_dsel_trans, y_dsel)`` after injecting the tuned pool via
+       ``des_conf["pool_classifiers"] = fitted_pool``.
+    5) Build the **final inference pipeline** = ``preprocessing -> DES`` (no resampling).
     6) Evaluate on ``(X_test, y_test)`` via ``compute_classification_metrics``.
 
     Parameters
     ----------
     des_model : sklearn.base.BaseEstimator
-        Unfitted DESlib estimator **instance** (e.g., ``KNORAE``, ``OLA``, ``METADES``).
+        Unfitted DESlib estimator instance (e.g., ``KNORAE``, ``OLA``, ``METADES``).
         Must accept ``pool_classifiers=...`` in ``set_params`` and implement
-        ``fit`` / ``predict`` (``predict_proba`` optional).
-    des_conf : dict
+        ``fit`` / ``predict`` (``predict_proba`` is optional).
+    des_conf : dict[str, Any]
         Hyperparameters for ``des_model`` (e.g., ``k``, ``DFP``, ``IH_rate``, ``voting``,
-        ``n_jobs``). **Do not** include ``pool_classifiers`` here; it is injected internally.
-        This dict is updated in-place before fitting.
-    pool_classifiers : imblearn.pipeline.Pipeline or sklearn.pipeline.Pipeline or BaseEstimator
-        Base pool to be tuned (typically a pipeline with steps named:
-        ``"preprocessor"``, ``"feature_selection_filter"``, ``"feature_selection_embedded"``,
-        ``"resampling"``, ``"classifier"``). The tuned ``"classifier"`` step becomes the pool.
-        The ``"resampling"`` step is used **only** during pool training and is **dropped**
-        from the final inference pipeline.
-    search_space : dict
-        Hyperparameter distributions for ``RandomizedSearchCV``. Keys must match the pool's
-        parameter naming (e.g., ``"classifier__n_estimators"``,
-        ``"preprocessor__scaler__with_mean"``).
-    X_train : pandas.DataFrame or numpy.ndarray
-        Features of the **outer training** fold (split internally into pool-training and DSEL).
-    y_train : pandas.Series or numpy.ndarray
-        Labels of the outer training fold.
-    X_test : pandas.DataFrame or numpy.ndarray
-        Features of the **outer test** fold (never used in tuning or DSEL fitting).
-    y_test : pandas.Series or numpy.ndarray
-        Labels of the outer test fold.
+        ``n_jobs``). Do not include ``pool_classifiers`` initially; it is injected internally.
+        This dict is **mutated in-place** by adding ``"pool_classifiers"`` before fitting.
+    pool_classifiers : imblearn.pipeline.Pipeline or sklearn.pipeline.Pipeline
+        Pool-training pipeline to be tuned. This function assumes it exposes
+        ``named_steps`` and supports slicing, and that it contains (at minimum) the steps:
+        - ``"preprocessor"``
+        - ``"feature_selection_filter"`` (e.g., ``SelectKBest``)
+        - ``"resampling"`` (used only during pool training; excluded from final inference)
+        - ``"classifier"`` (the bagging/ensemble object used as the fitted pool)
+    search_space : dict[str, Any]
+        Hyperparameter distributions for ``RandomizedSearchCV``. Keys must match the pool
+        pipeline parameter naming (e.g., ``"classifier__n_estimators"``,
+        ``"feature_selection_filter__k"``).
+    X_train, y_train : array-like
+        Features/labels of the **outer training** fold (split internally into pool-training and DSEL).
+    X_test, y_test : array-like
+        Features/labels of the **outer test** fold (never used in tuning nor DSEL fitting).
     n_iter : int
-        Number of parameter settings sampled by ``RandomizedSearchCV`` when tuning
-        the pool ensemble.
+        Number of parameter settings sampled by ``RandomizedSearchCV`` for tuning the pool.
     dsel_size : float, default=0.2
         Proportion of ``X_train`` reserved for DSEL (``0 < dsel_size < 1``).
     val_cv_split : int, default=5
@@ -294,43 +293,70 @@ def train_and_evaluate_one_fold_des_model(
     Returns
     -------
     final_des_pipeline : sklearn.pipeline.Pipeline
-        Fitted inference pipeline:
-        ``[('preprocessor', ...), ('feature_selection_filter', ...),
-          ('feature_selection_embedded', ...), ('classifier', DES)]``.
+        Fitted inference pipeline (resampling excluded):
+        ``[('preprocessor', ...), ('feature_selection_filter', ...), ('classifier', DES)]``.
     test_metrics : dict[str, float | int]
         Metrics computed on the test set by ``compute_classification_metrics``
         (e.g., ``accuracy``, ``f1``, ``roc_auc``, ``average_precision``,
         ``tp``, ``tn``, ``fp``, ``fn``), plus ``"score_time"`` (seconds).
 
+    Raises
+    ------
+    KeyError
+        If required pipeline steps are missing from ``pool_classifiers.named_steps``
+        (notably ``"resampling"`` or ``"classifier"``).
+    ValueError
+        If ``RandomizedSearchCV`` fails due to invalid ``search_space`` keys or an
+        incompatible ``scoring`` metric.
+
     Notes
     -----
-    - **No leakage:** The outer test set is never used for tuning nor for DES fitting.
-    - **Resampling at train-time only:** The pool's ``"resampling"`` step (if present)
-      is not part of the final inference pipeline.
-    - **Step assumptions:** This function expects the pool pipeline to have the named
-      steps listed above and slices the first three steps as preprocessing
-      (``best_pipe_pool_classifiers[:3]``). Adjust if your layout differs.
-    - **Probabilities:** If ``predict_proba`` is unavailable, the code falls back to
-      ``None`` for probabilities; ensure your ``compute_classification_metrics`` supports
-      that or adapt it to ``decision_function``-based metrics.
+    - **No leakage:** the outer test set is never used for pool tuning nor DES fitting.
+    - **Train-time only resampling:** the pool's ``"resampling"`` step (if present) is used
+      only during pool training and is removed from the final inference pipeline.
+    - **Probabilities:** ``predict_proba`` is attempted for test probabilities; if unavailable,
+      probabilities are set to ``None`` and passed through to ``compute_classification_metrics``.
+    - **Binary classification convention:** when ``predict_proba`` is available, this code
+      extracts the positive class as ``predict_proba(X)[:, 1]``.
 
     Examples
     --------
+    Minimal end-to-end usage on one outer fold (pool + DES):
+
+    >>> # 1) Get pool (bagging) and DES objects
+    >>> pool_estimator, pool_space, des_model, des_conf = get_des_model(
+    ...     model_name="KNORAE",
+    ...     random_state=42,
+    ...     use_cost_sensitive_learning=True,
+    ... )
+    >>>
+    >>> # 2) Build the pool training pipeline (must include a "resampling" step name)
+    >>> pool_pipeline = build_model_pipeline(
+    ...     estimator=pool_estimator,
+    ...     numerical_features_to_standardize=idx_num_features_to_standardize,
+    ...     fs_k_best_to_keep=20,
+    ...     resampling_method="SMOTE",
+    ...     resampling_params={"random_state": 42},
+    ... )
+    >>>
+    >>> # 3) Train/evaluate DES on a single outer fold split (X_train/y_train, X_test/y_test)
     >>> final_pipe, test_metrics = train_and_evaluate_one_fold_des_model(
     ...     des_model=des_model,
-    ...     des_conf=des_conf,                  # will be updated with the tuned pool
-    ...     pool_classifiers=pool_classifiers,  # your training pipeline
-    ...     search_space=search_space,
+    ...     des_conf=des_conf,
+    ...     pool_classifiers=pool_pipeline,
+    ...     search_space=pool_space,
     ...     X_train=X_train, y_train=y_train,
     ...     X_test=X_test,   y_test=y_test,
-    ...     n_iter=35,
+    ...     n_iter=30,
     ...     dsel_size=0.2,
     ...     val_cv_split=5,
     ...     scoring="average_precision",
     ...     random_state=42,
     ...     n_jobs=-1,
     ... )
+    >>> test_metrics["average_precision"], test_metrics["f1"]
     """
+
     # Split TRAIN into pool-training and DSEL
     X_train_pool, X_dsel, y_train_pool, y_dsel = train_test_split(
         X_train,
@@ -370,7 +396,8 @@ def train_and_evaluate_one_fold_des_model(
 
     # Extract the preprocessing pipeline (fitted)
     # We skip resampling step since it is required just at training time
-    fitted_preproc = best_pipe_pool_classifiers[:3]
+    resampling_idx = list(best_pipe_pool_classifiers.named_steps.keys()).index("resampling")
+    fitted_preproc = best_pipe_pool_classifiers[:resampling_idx]
 
     # Apply the preprocessing steps on the DSEL dataset
     X_dsel_trans = fitted_preproc.transform(X_dsel)
@@ -421,6 +448,7 @@ def train_and_evaluate_one_fold_all_models(
     static_models: Sequence[str],
     des_models: Sequence[str],
     fs_k_best_to_keep: int | str,
+    fs_k_best_candidates: Sequence[int | str] | None,
     use_cost_sensitive_learning: bool,
     resampling_method: str | None,
     resampling_params: Dict[str, Any] | None,
@@ -441,24 +469,31 @@ def train_and_evaluate_one_fold_all_models(
 
     1. Splits ``X`` and ``y`` into an outer training and test set.
     2. For each **STATIC** model in ``static_models``:
-       - builds the pipeline (preprocessing → feature selection → resampling → classifier),
-       - tunes it with :func:`train_and_evaluate_one_fold_static_model`
-         using ``RandomizedSearchCV``,
+       - retrieves the estimator and its **estimator-level** hyperparameter search space
+         via :func:`get_static_model_and_search_space`,
+       - optionally **extends** the search space with the pipeline-level parameter
+         ``"feature_selection_filter__k"`` using ``fs_k_best_candidates``,
+       - builds the training pipeline (preprocessing → SelectKBest → resampling → classifier),
+       - tunes it with :func:`train_and_evaluate_one_fold_static_model`,
        - extracts final selected features via :func:`get_final_selected_features`,
        - collects both resubstitution (train) and generalization (test) metrics.
     3. For each **DES** model in ``des_models``:
-       - builds and tunes a bagging pool via :func:`train_and_evaluate_one_fold_des_model`,
-         which internally uses ``RandomizedSearchCV`` for the pool,
-       - fits the DES model on a DSEL subset of the outer training set,
-       - collects generalization (test) metrics and selected features.
-    4. Returns two lists of rows (dicts) ready to be aggregated and saved
-       at experiment level.
+       - retrieves a bagging pool estimator and its **estimator-level** search space plus an
+         unfitted DESlib model via :func:`get_des_model`,
+       - optionally **extends** the pool search space with ``"feature_selection_filter__k"``
+         using ``fs_k_best_candidates``,
+       - builds the pool pipeline (preprocessing → SelectKBest → resampling → bagging pool),
+       - tunes the pool and fits the DES competence model via
+         :func:`train_and_evaluate_one_fold_des_model`,
+       - extracts final selected features via :func:`get_final_selected_features`,
+       - collects generalization (test) metrics.
+    4. Returns two lists of rows (dicts) ready to be aggregated and saved at experiment level.
 
     Parameters
     ----------
     run_id : int
         Global counter from ``enumerate(cv_outer.split(X, y))`` identifying the
-        current outer split.
+        current outer split (across repetitions and folds).
     iteration_idx : int
         0-based index of the outer repetition within ``RepeatedStratifiedKFold``.
     fold_idx : int
@@ -468,17 +503,17 @@ def train_and_evaluate_one_fold_all_models(
     test_idx : numpy.ndarray
         Indices of samples used as test data for this outer fold.
     X : numpy.ndarray of shape (n_samples, n_features)
-        Full feature matrix (already shuffled upstream).
+        Full feature matrix.
     y : numpy.ndarray of shape (n_samples,)
-        Full target vector (already shuffled upstream).
+        Full target vector.
     experiment_name : str
         Experiment identifier stored in every metrics row.
     idx_num_features_to_standardize : sequence of int
         Column indices to be standardized by the preprocessing step.
     transformed_feature_names : sequence of str
-        Feature names **after** the preprocessor, aligned with the input
-        of the first feature-selection step. Used to map selected indices
-        back to human-readable names.
+        Feature names aligned with the input of ``"feature_selection_filter"``
+        (i.e., after ``"preprocessor"``). Used to map selected indices back to
+        human-readable names.
     static_models : sequence of str
         List of static model names to be trained
         (e.g. ``["SVC", "RandomForestClassifier"]``).
@@ -486,73 +521,66 @@ def train_and_evaluate_one_fold_all_models(
         List of DES model names to be trained
         (e.g. ``["KNORAE", "METADES"]``).
     fs_k_best_to_keep : int or {"all"}
-        Number of features retained by ``SelectKBest``. Use ``"all"`` to
-        keep all features.
+        Default ``k`` used to build the ``SelectKBest(k=...)`` step inside
+        :func:`build_model_pipeline`.
+
+        Important: this is the *initial* value used when constructing the pipeline.
+        If the tuning search space includes ``"feature_selection_filter__k"``,
+        the tuned value may differ at fit time.
+    fs_k_best_candidates : sequence of (int or {"all"}) or None
+        Optional candidate values for ``SelectKBest.k`` to be explored during tuning.
+
+        If provided, this function injects the candidates directly into the
+        hyperparameter search spaces used for tuning by adding:
+
+        ``"feature_selection_filter__k": list(fs_k_best_candidates)``
+
+        for both STATIC pipelines and DES pool pipelines. If ``None``, feature selection
+        is treated as fixed at ``fs_k_best_to_keep`` (unless the search space is
+        otherwise modified upstream).
     use_cost_sensitive_learning : bool
         Whether to enable cost-sensitive / imbalance-aware behaviour in both
-        STATIC models and DES pools. This flag is forwarded to:
-
-        - :func:`get_static_model_and_search_space` for each static model, and
-        - :func:`get_des_model` for each DES pool.
-
-        When ``True``, models that support it are configured with imbalance-aware
-        defaults (e.g. ``class_weight='balanced'``, tuned ``scale_pos_weight`` in
-        XGBoost, imbalanced-learn samplers/ensembles). When ``False``, those
-        mechanisms are disabled where possible.
+        STATIC models and DES pools. Forwarded to the model factories used here.
     resampling_method : str or None
         Canonical name of the resampling strategy (e.g. ``"SMOTE"``,
         ``"RandomUnderSampler"``, ``"SMOTEENN"``) or ``None``/``"none"``
         to disable resampling.
     resampling_params : dict or None
-        Extra keyword arguments for the sampler constructor
-        (e.g. ``sampling_strategy``, ``random_state``, ``k_neighbors``).
-        If ``None``, no extra kwargs are passed.
+        Extra keyword arguments for the sampler constructor.
     tuning_n_iter : int
-        Value passed as ``n_iter`` to ``RandomizedSearchCV`` for
-        both STATIC models and DES bagging pools.
+        Value passed as ``n_iter`` to the CV-based hyperparameter search used
+        for both STATIC models and DES bagging pools.
     tuning_cv_inner_n_splits : int
         Number of stratified folds for the inner model-selection CV.
     tuning_scoring : str
-        Scoring metric passed to ``RandomizedSearchCV``
-        (e.g. ``"f1"``, ``"roc_auc"``, ``"average_precision"``).
+        Scoring metric passed to the hyperparameter search.
     tuning_n_jobs : int
-        Number of parallel jobs for the randomized search (``-1`` uses all
-        available cores).
+        Number of parallel jobs for the hyperparameter search.
     dsel_size : float
-        Fraction of the outer training set reserved for the DSEL subset
-        used to fit DES models (``0 < dsel_size < 1``).
+        Fraction of the outer training set reserved for the DSEL subset used
+        to fit DES models (``0 < dsel_size < 1``).
     random_state : int
-        Random seed forwarded to models, inner CV splitters and DSEL split
-        within this fold. In this implementation a per-fold offset
-        (``random_state + run_id``) is used for the inner tuning calls to
-        diversify configurations across folds.
-    logger : loguru.Logger or None, optional
-        Optional Loguru logger used for progress messages and fold-level
-        diagnostics. When ``None`` (default), messages are printed to
-        standard output via :func:`print`. When provided, messages are
-        emitted through ``logger.info``.
+        Base random seed forwarded to models, inner CV splitters, and the DSEL split.
+    logger : Any or None, optional
+        Optional logger exposing ``.info(str)`` (e.g., Loguru). If ``None``, messages
+        are printed to stdout.
 
     Returns
     -------
     resubstitution_rows : list of dict
-        Metrics rows for all STATIC models on the **training** set
-        (resubstitution error) of the current outer fold. Each row is
-        compatible with :func:`collect_report_one_fold` output.
+        Metrics rows for all STATIC models on the **training** set of the current
+        outer fold (resubstitution error).
     generalization_rows : list of dict
-        Metrics rows for all STATIC and DES models on the **test** set
-        (generalization error) of the current outer fold.
+        Metrics rows for all STATIC and DES models on the **test** set of the current
+        outer fold (generalization error).
 
     Notes
     -----
-    - The ``iteration`` and ``fold`` fields written in the output rows are
-      1-based (``iteration_idx + 1``, ``fold_idx + 1``) for readability in
-      downstream reports.
-    - This function is **config-free**: all required settings are passed as
-      parameters, which makes it suitable for potential parallel execution
-      of outer folds.
-    - If a :class:`loguru.Logger` instance is provided via ``logger``, all
-      informational messages are routed through ``logger.info``; otherwise
-      they fall back to :func:`print`.
+    - The ``iteration`` and ``fold`` fields written in the output rows are 1-based
+      (``iteration_idx + 1``, ``fold_idx + 1``) for readability in downstream reports.
+    - Feature-selection tuning is performed by extending the search spaces with
+      ``"feature_selection_filter__k"`` (when ``fs_k_best_candidates`` is provided).
+      This assumes your pipeline step is named exactly ``"feature_selection_filter"``.
 
     Examples
     --------
@@ -587,6 +615,7 @@ def train_and_evaluate_one_fold_all_models(
                 static_models=["SVC", "RandomForestClassifier"],
                 des_models=["KNORAU", "METADES"],
                 fs_k_best_to_keep=20,
+                fs_k_best_candidates=[10, 20, 30, "all"],  # injects feature_selection_filter__k
                 use_cost_sensitive_learning=True,
                 resampling_method="SMOTE",
                 resampling_params={"sampling_strategy": 0.2, "random_state": 42},
@@ -638,6 +667,10 @@ def train_and_evaluate_one_fold_all_models(
             random_state=random_state,
             use_cost_sensitive_learning=use_cost_sensitive_learning,
         )
+
+        # Add the k candidates for SelectKBest to be tuned with the model
+        if fs_k_best_candidates is not None:
+            static_model_search_space["feature_selection_filter__k"] = list(fs_k_best_candidates)
 
         # Build the final pipeline: Preprocessing + Feature Selection + Resampling + Classifier
         static_model_pipeline = build_model_pipeline(
@@ -715,6 +748,10 @@ def train_and_evaluate_one_fold_all_models(
             random_state=random_state,
             use_cost_sensitive_learning=use_cost_sensitive_learning,
         )
+
+        # Add the k candidates for SelectKBest to be tuned with the model
+        if fs_k_best_candidates is not None:
+            pool_search_space["feature_selection_filter__k"] = list(fs_k_best_candidates)
 
         # Build the final pipeline: Preprocessing + Feature Selection + Resampling + Classifier
         pool_classifiers_pipeline = build_model_pipeline(

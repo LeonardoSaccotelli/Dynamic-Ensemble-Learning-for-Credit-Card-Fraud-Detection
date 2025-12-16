@@ -15,6 +15,7 @@ from fraud_dynamic_ensemble.config import (
     DSEL_SIZE,
     EXPERIMENT_DESCRIPTION,
     EXPERIMENT_NAME,
+    FS_K_BEST_CANDIDATES,
     FS_K_BEST_TO_KEEP,
     MODELS_DIR,
     NUMERICAL_FEATURES_TO_STANDARDIZE,
@@ -79,7 +80,11 @@ def main(
     model_path : pathlib.Path, default=MODELS_DIR
         Root directory where the experiment folder will be created and results saved.
     target : str, default="Class"
-        Name of the target column in ``input_path``.
+        Name of the target column in ``input_path``. The dataset is split as::
+
+            X = df.drop([target], axis=1)
+            y = df[target]
+
     outer_n_jobs : int, default=CV_OUTER_PARALLEL_N_JOBS
         Number of outer CV folds to execute in parallel.
         - ``1``  → sequential execution of outer folds (current behaviour).
@@ -87,9 +92,18 @@ def main(
           In this case it is usually recommended to set the inner tuning parameter
           ``TUNING_N_JOBS`` to ``1`` to avoid nested parallelism.
 
+    Feature Selection
+    -----------------
+    The training pipelines include ``SelectKBest``:
+
+    - ``FS_K_BEST_TO_KEEP`` sets the default ``k`` used to build the pipeline.
+    - ``FS_K_BEST_CANDIDATES`` is forwarded to the fold-level orchestrator
+      (``train_and_evaluate_one_fold_all_models``) to optionally extend the
+      hyperparameter search space with ``feature_selection_filter__k``.
+
     Side Effects
     ------------
-    - Creates/updates files under ``<MODELS_DIR>/<experiment_name>/<MODEL_NAME>/``.
+    - Creates/updates files under ``<model_path>/<experiment_name>/<MODEL_NAME>/``.
     - Writes one configuration JSON and up to two CSV summaries per model:
       - ``generalization_metrics_summary.csv`` (always, STATIC + DES)
       - ``resubstitution_metrics_summary.csv`` (STATIC only; skipped for DES-only models)
@@ -100,13 +114,18 @@ def main(
     ------
     typer.Exit
         If ``input_path`` does not exist (precondition failure).
+    KeyError
+        If ``target`` is not a column in the loaded dataset.
     ValueError
         If requested features to standardize are not present in the dataset.
+    RuntimeError
+        If no models are found in the produced results (nothing to persist), or if a model
+        has no generalization rows.
 
     Notes
     -----
     Persistence layout
-    - Experiment root: ``<MODELS_DIR>/<experiment_name>/``
+    - Experiment root: ``<model_path>/<experiment_name>/``
     - For each model key found in the results (column ``model``), a folder is created:
       ``<experiment_root>/<MODEL_NAME>/`` containing:
       - ``generalization_metrics_summary.csv``
@@ -119,6 +138,11 @@ def main(
     Tuning can be computationally intensive; configure
     ``TUNING_N_ITER``, ``TUNING_N_JOBS`` and ``TUNING_CV_INNER_N_SPLITS`` according to the
     available computational resources and desired search budget.
+
+    Parallel execution note
+        When ``outer_n_jobs > 1``, joblib may use process-based parallelism depending on backend.
+        Ensure objects passed to workers are picklable; if you see serialization issues with the
+        logger, pass ``logger=None`` to workers (stdout fallback) or configure per-process logging.
     """
 
     logger.info("Running fraud_dynamic_ensemble/train.py ...")
@@ -132,7 +156,7 @@ def main(
         "experiment_start_time": datetime.now().strftime("%Y/%m/%d-%H:%M:%S"),
         "use_cost_sensitive_learning": USE_COST_SENSITIVE_LEARNING,
         "feature_transformation_standard_scaler": NUMERICAL_FEATURES_TO_STANDARDIZE,
-        "feature_selection_KBest": FS_K_BEST_TO_KEEP,
+        "feature_selection_KBest_candidates": FS_K_BEST_CANDIDATES,
         "resampling_method": RESAMPLING_METHOD,
         "resampling_params": RESAMPLING_PARAMS,
         "outer_evaluation_loop": f"RepeatedStratifiedKFold_{CV_OUTER_N_REPEATS}_times_{CV_OUTER_N_SPLITS}_folds",
@@ -173,7 +197,7 @@ def main(
     df = df.sample(frac=1.0, random_state=RANDOM_STATE).reset_index(drop=True)
 
     # Split data into features and labels
-    X, y = df.drop(["Class"], axis=1), df["Class"]
+    X, y = df.drop([target], axis=1), df[target]
     logger.info(
         f"Splitting dataset into features and labels. "
         f"Shape of X: {X.shape} - Shape of y: {y.shape}"
@@ -236,6 +260,7 @@ def main(
                 static_models=STATIC_MODELS,
                 des_models=DES_MODELS,
                 fs_k_best_to_keep=FS_K_BEST_TO_KEEP,
+                fs_k_best_candidates=FS_K_BEST_CANDIDATES,
                 use_cost_sensitive_learning=USE_COST_SENSITIVE_LEARNING,
                 resampling_method=RESAMPLING_METHOD,
                 resampling_params=RESAMPLING_PARAMS,
@@ -271,6 +296,7 @@ def main(
                 static_models=STATIC_MODELS,
                 des_models=DES_MODELS,
                 fs_k_best_to_keep=FS_K_BEST_TO_KEEP,
+                fs_k_best_candidates=FS_K_BEST_CANDIDATES,
                 use_cost_sensitive_learning=USE_COST_SENSITIVE_LEARNING,
                 resampling_method=RESAMPLING_METHOD,
                 resampling_params=RESAMPLING_PARAMS,
