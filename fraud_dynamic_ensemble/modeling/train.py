@@ -65,6 +65,9 @@ def main(
            (pipeline: scaling → feature selection → resampling → classifier),
          - tunes a bagging pool, fits each DES model on DSEL, and evaluates the
            DES pipeline on the outer test fold,
+         - computes **resubstitution metrics** for:
+             * STATIC models (on the full outer training set), and
+             * DES models (on the **trained pool classifiers** used by DES),
       5) aggregates fold-level rows in memory, then persists results **per model**
          under the experiment folder.
 
@@ -104,9 +107,11 @@ def main(
     Side Effects
     ------------
     - Creates/updates files under ``<model_path>/<experiment_name>/<MODEL_NAME>/``.
-    - Writes one configuration JSON and up to two CSV summaries per model:
-      - ``generalization_metrics_summary.csv`` (always, STATIC + DES)
-      - ``resubstitution_metrics_summary.csv`` (STATIC only; skipped for DES-only models)
+    - Writes one configuration JSON and two CSV summaries per model:
+      - ``generalization_metrics_summary.csv`` (STATIC + DES, evaluated on the outer test fold)
+      - ``resubstitution_metrics_summary.csv``:
+          * STATIC models: metrics on the outer training set (resubstitution error)
+          * DES models: metrics computed on the **trained pool classifiers** (resubstitution error)
       - ``experiment_config.json`` (same experiment settings replicated in each model folder)
     - Produces extensive logging via the configured :mod:`loguru` ``logger``.
 
@@ -120,7 +125,8 @@ def main(
         If requested features to standardize are not present in the dataset.
     RuntimeError
         If no models are found in the produced results (nothing to persist), or if a model
-        has no generalization rows.
+        has missing metrics rows (generalization or resubstitution), since both are expected
+        for every model.
 
     Notes
     -----
@@ -129,7 +135,7 @@ def main(
     - For each model key found in the results (column ``model``), a folder is created:
       ``<experiment_root>/<MODEL_NAME>/`` containing:
       - ``generalization_metrics_summary.csv``
-      - ``resubstitution_metrics_summary.csv`` (only if present; typically STATIC models)
+      - ``resubstitution_metrics_summary.csv``
       - ``experiment_config.json``
 
     The two global CSV files previously written at the experiment root are no longer produced;
@@ -364,18 +370,19 @@ def main(
             else None
         )
 
-        # Generalization always expected for both STATIC and DES
+        # Generalization expected for both STATIC and DES
         if generalization_metrics_model is None or generalization_metrics_model.empty:
             raise RuntimeError(f"No generalization rows found for model='{model_name}'.")
         generalization_metrics_model.to_csv(
             model_dir / "generalization_metrics_summary.csv", index=False, sep=","
         )
 
-        # Resubstitution only for STATIC models; DES -> skip if empty
-        if resubstitution_metrics_model is not None and (not resubstitution_metrics_model.empty):
-            resubstitution_metrics_model.to_csv(
-                model_dir / "resubstitution_metrics_summary.csv", index=False, sep=","
-            )
+        # Resubstitution now expected for both STATIC and DES
+        if resubstitution_metrics_model is None or resubstitution_metrics_model.empty:
+            raise RuntimeError(f"No resubstitution rows found for model='{model_name}'.")
+        resubstitution_metrics_model.to_csv(
+            model_dir / "resubstitution_metrics_summary.csv", index=False, sep=","
+        )
 
         # Store experiment settings
         save_dict_json(

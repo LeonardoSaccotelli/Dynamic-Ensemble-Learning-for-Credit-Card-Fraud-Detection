@@ -228,10 +228,16 @@ def train_and_evaluate_one_fold_des_model(
     scoring: str = "f1",
     random_state: int = 42,
     n_jobs: int = -1,
-) -> Tuple[Pipeline, Dict[str, float | int]]:
+) -> tuple[
+    Pipeline,
+    Dict[str, Any],
+    Dict[str, float],
+    Dict[str, float | int],
+]:
     """
     Train a **Dynamic Ensemble Selection (DES)** model on one outer fold and
-    evaluate it on the held-out test set.
+    evaluate it on the held-out test set, while also reporting tuning and
+    resubstitution metrics for the **pool**.
 
     Workflow
     --------
@@ -240,15 +246,16 @@ def train_and_evaluate_one_fold_des_model(
          (``pool_classifiers``) with ``RandomizedSearchCV``.
        - **DSEL** subset: used to fit the DES competence model.
     2) Tune and refit ``pool_classifiers`` on the pool-training subset.
-    3) From the best pool pipeline:
-       - Extract the **fitted preprocessing** steps (e.g., ``"preprocessor"`` and
-         ``"feature_selection_filter"``), i.e. all steps **before** ``"resampling"``.
+    3) Compute **pool resubstitution metrics** on the pool-training subset
+       using the tuned pool pipeline (analogous to the STATIC reference function).
+    4) From the best pool pipeline:
+       - Extract the **fitted preprocessing** steps (all steps before ``"resampling"``).
        - Extract the tuned **classifier** step to be used as the fitted **pool**.
-    4) Transform the DSEL data with the fitted preprocessing and fit the DES model on
+    5) Transform DSEL with the fitted preprocessing and fit the DES model on
        ``(X_dsel_trans, y_dsel)`` after injecting the tuned pool via
        ``des_conf["pool_classifiers"] = fitted_pool``.
-    5) Build the **final inference pipeline** = ``preprocessing -> DES`` (no resampling).
-    6) Evaluate on ``(X_test, y_test)`` via ``compute_classification_metrics``.
+    6) Build the **final inference pipeline** = ``preprocessing -> DES`` (no resampling).
+    7) Evaluate the final DES pipeline on ``(X_test, y_test)``.
 
     Parameters
     ----------
@@ -261,20 +268,18 @@ def train_and_evaluate_one_fold_des_model(
         ``n_jobs``). Do not include ``pool_classifiers`` initially; it is injected internally.
         This dict is **mutated in-place** by adding ``"pool_classifiers"`` before fitting.
     pool_classifiers : imblearn.pipeline.Pipeline or sklearn.pipeline.Pipeline
-        Pool-training pipeline to be tuned. This function assumes it exposes
-        ``named_steps`` and supports slicing, and that it contains (at minimum) the steps:
+        Pool-training pipeline to be tuned. Expected to contain the steps:
         - ``"preprocessor"``
         - ``"feature_selection_filter"`` (e.g., ``SelectKBest``)
-        - ``"resampling"`` (used only during pool training; excluded from final inference)
+        - ``"resampling"`` (train-only; excluded from final inference)
         - ``"classifier"`` (the bagging/ensemble object used as the fitted pool)
     search_space : dict[str, Any]
-        Hyperparameter distributions for ``RandomizedSearchCV``. Keys must match the pool
-        pipeline parameter naming (e.g., ``"classifier__n_estimators"``,
-        ``"feature_selection_filter__k"``).
+        Hyperparameter distributions for tuning the pool (e.g.,
+        ``"classifier__n_estimators"``, ``"feature_selection_filter__k"``).
     X_train, y_train : array-like
         Features/labels of the **outer training** fold (split internally into pool-training and DSEL).
     X_test, y_test : array-like
-        Features/labels of the **outer test** fold (never used in tuning nor DSEL fitting).
+        Features/labels of the **outer test** fold.
     n_iter : int
         Number of parameter settings sampled by ``RandomizedSearchCV`` for tuning the pool.
     dsel_size : float, default=0.2
@@ -285,7 +290,7 @@ def train_and_evaluate_one_fold_des_model(
         Scoring metric passed to ``RandomizedSearchCV`` (e.g., ``"f1"``, ``"roc_auc"``,
         ``"average_precision"``).
     random_state : int, default=42
-        Random seed used in the DSEL split, the inner CV splitter, and the randomized search.
+        Random seed used in the DSEL split, inner CV splitter, and randomized search.
     n_jobs : int, default=-1
         Parallel jobs for ``RandomizedSearchCV`` (``-1`` uses all cores). The underlying
         estimators should typically use ``n_jobs=1`` to avoid nested parallelism.
@@ -294,17 +299,30 @@ def train_and_evaluate_one_fold_des_model(
     -------
     final_des_pipeline : sklearn.pipeline.Pipeline
         Fitted inference pipeline (resampling excluded):
-        ``[('preprocessor', ...), ('feature_selection_filter', ...), ('classifier', DES)]``.
+        ``preprocessing_steps + [('classifier', DES)]``.
+    tuning_results : dict
+        Summary of the pool tuning at the best index, including:
+        - ``cv_tuning_mean_train_score`` : float
+        - ``cv_tuning_std_train_score`` : float
+        - ``cv_tuning_mean_val_score`` : float
+        - ``cv_tuning_std_val_score`` : float
+        - ``best_params`` : dict
+        - ``tuning_time`` : float (seconds)
+    pool_resubstitution_metrics : dict[str, float]
+        Metrics computed on the **pool-training subset** using the tuned pool pipeline
+        (resubstitution error of the pool only).
     test_metrics : dict[str, float | int]
-        Metrics computed on the test set by ``compute_classification_metrics``
-        (e.g., ``accuracy``, ``f1``, ``roc_auc``, ``average_precision``,
-        ``tp``, ``tn``, ``fp``, ``fn``), plus ``"score_time"`` (seconds).
+        Metrics computed on the test set by ``compute_classification_metrics``,
+        plus ``"score_time"`` (seconds).
 
     Raises
     ------
     KeyError
         If required pipeline steps are missing from ``pool_classifiers.named_steps``
         (notably ``"resampling"`` or ``"classifier"``).
+    AttributeError
+        If the tuned pool pipeline does not implement ``predict_proba`` (pool resubstitution
+        requires probabilities, consistent with the STATIC reference function).
     ValueError
         If ``RandomizedSearchCV`` fails due to invalid ``search_space`` keys or an
         incompatible ``scoring`` metric.
@@ -312,35 +330,18 @@ def train_and_evaluate_one_fold_des_model(
     Notes
     -----
     - **No leakage:** the outer test set is never used for pool tuning nor DES fitting.
-    - **Train-time only resampling:** the pool's ``"resampling"`` step (if present) is used
-      only during pool training and is removed from the final inference pipeline.
-    - **Probabilities:** ``predict_proba`` is attempted for test probabilities; if unavailable,
-      probabilities are set to ``None`` and passed through to ``compute_classification_metrics``.
-    - **Binary classification convention:** when ``predict_proba`` is available, this code
-      extracts the positive class as ``predict_proba(X)[:, 1]``.
+    - **Train-time only resampling:** pool ``"resampling"`` is used only during pool tuning/fit
+      and excluded from the final inference pipeline.
+    - **Probabilities (test):** ``predict_proba`` is attempted for test probabilities; if unavailable,
+      probabilities are set to ``None``.
+    - **Binary classification convention:** when ``predict_proba`` is available, the positive class is
+      extracted as ``predict_proba(X)[:, 1]``.
 
     Examples
     --------
-    Minimal end-to-end usage on one outer fold (pool + DES):
+    Tune a bagging pool, compute pool resubstitution metrics, fit DES on DSEL, and evaluate on test:
 
-    >>> # 1) Get pool (bagging) and DES objects
-    >>> pool_estimator, pool_space, des_model, des_conf = get_des_model(
-    ...     model_name="KNORAE",
-    ...     random_state=42,
-    ...     use_cost_sensitive_learning=True,
-    ... )
-    >>>
-    >>> # 2) Build the pool training pipeline (must include a "resampling" step name)
-    >>> pool_pipeline = build_model_pipeline(
-    ...     estimator=pool_estimator,
-    ...     numerical_features_to_standardize=idx_num_features_to_standardize,
-    ...     fs_k_best_to_keep=20,
-    ...     resampling_method="SMOTE",
-    ...     resampling_params={"random_state": 42},
-    ... )
-    >>>
-    >>> # 3) Train/evaluate DES on a single outer fold split (X_train/y_train, X_test/y_test)
-    >>> final_pipe, test_metrics = train_and_evaluate_one_fold_des_model(
+    >>> final_pipe, tuning, pool_resub, test_metrics = train_and_evaluate_one_fold_des_model(
     ...     des_model=des_model,
     ...     des_conf=des_conf,
     ...     pool_classifiers=pool_pipeline,
@@ -354,9 +355,7 @@ def train_and_evaluate_one_fold_des_model(
     ...     random_state=42,
     ...     n_jobs=-1,
     ... )
-    >>> test_metrics["average_precision"], test_metrics["f1"]
     """
-
     # Split TRAIN into pool-training and DSEL
     X_train_pool, X_dsel, y_train_pool, y_dsel = train_test_split(
         X_train,
@@ -390,9 +389,35 @@ def train_and_evaluate_one_fold_des_model(
         return_train_score=True,
     )
 
+    # Fit the search and measure the tuning time
+    start_tuning_time = time.time()
     search.fit(X_train_pool, y_train_pool)
+    end_tuning_time = time.time()
+
     best_pipe_pool_classifiers = search.best_estimator_
     print(f"[RANDOMIZED SEARCH BEST PARAMS]: {search.best_params_}")
+
+    # Retrieve best search info (same structure as STATIC reference function)
+    tuning_results = {
+        "cv_tuning_mean_train_score": search.cv_results_["mean_train_score"][search.best_index_],
+        "cv_tuning_std_train_score": search.cv_results_["std_train_score"][search.best_index_],
+        "cv_tuning_mean_val_score": search.cv_results_["mean_test_score"][search.best_index_],
+        "cv_tuning_std_val_score": search.cv_results_["std_test_score"][search.best_index_],
+        "best_params": search.best_params_,
+        "tuning_time": end_tuning_time - start_tuning_time,
+    }
+
+    # --- Pool resubstitution metrics (only for the tuned pool pipeline) ---
+    print("[COMPUTING POOL RESUBSTITUTION METRICS]...")
+    y_train_pool_pred = best_pipe_pool_classifiers.predict(X_train_pool)
+
+    # Consistent with the STATIC reference function: require predict_proba
+    y_train_pool_pred_prob = best_pipe_pool_classifiers.predict_proba(X_train_pool)[:, 1]
+
+    pool_resubstitution_metrics = compute_classification_metrics(
+        y_train_pool, y_train_pool_pred, y_train_pool_pred_prob
+    )
+    print(f"[POOL RESUBSTITUTION METRICS]: {pool_resubstitution_metrics}")
 
     # Extract the preprocessing pipeline (fitted)
     # We skip resampling step since it is required just at training time
@@ -431,7 +456,7 @@ def train_and_evaluate_one_fold_des_model(
     test_metrics["score_time"] = end_score_time - start_score_time
     print(f"[GENERALIZATION METRICS]: {test_metrics}")
 
-    return final_des_pipeline, test_metrics
+    return final_des_pipeline, tuning_results, pool_resubstitution_metrics, test_metrics
 
 
 def train_and_evaluate_one_fold_all_models(
@@ -464,8 +489,8 @@ def train_and_evaluate_one_fold_all_models(
     Train and evaluate all STATIC and DES models on a single outer CV fold.
 
     This helper encapsulates the full workflow for one outer split of a
-    ``RepeatedStratifiedKFold`` experiment. Given the global feature/label
-    arrays and the current train/test indices, it:
+    ``RepeatedStratifiedKFold`` experiment. Given the global feature/label arrays
+    and the current train/test indices, it:
 
     1. Splits ``X`` and ``y`` into an outer training and test set.
     2. For each **STATIC** model in ``static_models``:
@@ -474,7 +499,7 @@ def train_and_evaluate_one_fold_all_models(
        - optionally **extends** the search space with the pipeline-level parameter
          ``"feature_selection_filter__k"`` using ``fs_k_best_candidates``,
        - builds the training pipeline (preprocessing → SelectKBest → resampling → classifier),
-       - tunes it with :func:`train_and_evaluate_one_fold_static_model`,
+       - tunes and refits it via :func:`train_and_evaluate_one_fold_static_model`,
        - extracts final selected features via :func:`get_final_selected_features`,
        - collects both resubstitution (train) and generalization (test) metrics.
     3. For each **DES** model in ``des_models``:
@@ -483,10 +508,12 @@ def train_and_evaluate_one_fold_all_models(
        - optionally **extends** the pool search space with ``"feature_selection_filter__k"``
          using ``fs_k_best_candidates``,
        - builds the pool pipeline (preprocessing → SelectKBest → resampling → bagging pool),
-       - tunes the pool and fits the DES competence model via
-         :func:`train_and_evaluate_one_fold_des_model`,
+       - tunes the pool, fits the DES competence model on DSEL, and evaluates the final
+         preprocessing→DES pipeline via :func:`train_and_evaluate_one_fold_des_model`,
        - extracts final selected features via :func:`get_final_selected_features`,
-       - collects generalization (test) metrics.
+       - collects:
+           * **resubstitution metrics** for the tuned/fitted **pool** (training-set error),
+           * **generalization metrics** for the DES inference pipeline on the outer test set.
     4. Returns two lists of rows (dicts) ready to be aggregated and saved at experiment level.
 
     Parameters
@@ -519,7 +546,7 @@ def train_and_evaluate_one_fold_all_models(
         (e.g. ``["SVC", "RandomForestClassifier"]``).
     des_models : sequence of str
         List of DES model names to be trained
-        (e.g. ``["KNORAE", "METADES"]``).
+        (e.g. ``["KNORAU", "METADES"]``).
     fs_k_best_to_keep : int or {"all"}
         Default ``k`` used to build the ``SelectKBest(k=...)`` step inside
         :func:`build_model_pipeline`.
@@ -531,13 +558,13 @@ def train_and_evaluate_one_fold_all_models(
         Optional candidate values for ``SelectKBest.k`` to be explored during tuning.
 
         If provided, this function injects the candidates directly into the
-        hyperparameter search spaces used for tuning by adding:
+        hyperparameter search spaces used for tuning by adding::
 
-        ``"feature_selection_filter__k": list(fs_k_best_candidates)``
+            "feature_selection_filter__k": list(fs_k_best_candidates)
 
-        for both STATIC pipelines and DES pool pipelines. If ``None``, feature selection
-        is treated as fixed at ``fs_k_best_to_keep`` (unless the search space is
-        otherwise modified upstream).
+        to both STATIC pipelines and DES pool pipelines. If ``None``, feature selection
+        is treated as fixed at ``fs_k_best_to_keep`` (unless the search space is modified
+        upstream).
     use_cost_sensitive_learning : bool
         Whether to enable cost-sensitive / imbalance-aware behaviour in both
         STATIC models and DES pools. Forwarded to the model factories used here.
@@ -561,6 +588,8 @@ def train_and_evaluate_one_fold_all_models(
         to fit DES models (``0 < dsel_size < 1``).
     random_state : int
         Base random seed forwarded to models, inner CV splitters, and the DSEL split.
+        ``random_state + run_id`` is used for tuning calls to diversify the randomized
+        search across outer folds.
     logger : Any or None, optional
         Optional logger exposing ``.info(str)`` (e.g., Loguru). If ``None``, messages
         are printed to stdout.
@@ -568,11 +597,15 @@ def train_and_evaluate_one_fold_all_models(
     Returns
     -------
     resubstitution_rows : list of dict
-        Metrics rows for all STATIC models on the **training** set of the current
-        outer fold (resubstitution error).
+        Metrics rows on the **training** side of the current outer fold:
+        - STATIC models: resubstitution metrics computed on ``(X_train, y_train)``.
+        - DES models: resubstitution metrics computed for the tuned/fitted **pool**
+          (the base ensemble used by the DES model).
     generalization_rows : list of dict
-        Metrics rows for all STATIC and DES models on the **test** set of the current
-        outer fold (generalization error).
+        Metrics rows on the **test** side of the current outer fold:
+        - STATIC models: test metrics computed on ``(X_test, y_test)``.
+        - DES models: test metrics computed by the final preprocessing→DES pipeline
+          on ``(X_test, y_test)``.
 
     Notes
     -----
@@ -581,6 +614,9 @@ def train_and_evaluate_one_fold_all_models(
     - Feature-selection tuning is performed by extending the search spaces with
       ``"feature_selection_filter__k"`` (when ``fs_k_best_candidates`` is provided).
       This assumes your pipeline step is named exactly ``"feature_selection_filter"``.
+    - For DES models, resubstitution metrics refer to the **pool** performance (not the
+      final DES inference pipeline), since the DES pipeline is trained via pool tuning
+      + competence learning on DSEL.
 
     Examples
     --------
@@ -763,27 +799,44 @@ def train_and_evaluate_one_fold_all_models(
         )
 
         # Tune the des model, fit on the training folds and evaluate on the test fold
-        best_des_model, test_metrics = train_and_evaluate_one_fold_des_model(
-            des_model=des_model_estimator,
-            des_conf=des_model_conf,
-            pool_classifiers=pool_classifiers_pipeline,
-            search_space=pool_search_space,
-            X_train=X_train,
-            y_train=y_train,
-            X_test=X_test,
-            y_test=y_test,
-            n_iter=tuning_n_iter,
-            dsel_size=dsel_size,
-            val_cv_split=tuning_cv_inner_n_splits,
-            scoring=tuning_scoring,
-            random_state=random_state + run_id,
-            n_jobs=tuning_n_jobs,
+        (best_des_model, tuning_results, resubstitution_metrics, test_metrics) = (
+            train_and_evaluate_one_fold_des_model(
+                des_model=des_model_estimator,
+                des_conf=des_model_conf,
+                pool_classifiers=pool_classifiers_pipeline,
+                search_space=pool_search_space,
+                X_train=X_train,
+                y_train=y_train,
+                X_test=X_test,
+                y_test=y_test,
+                n_iter=tuning_n_iter,
+                dsel_size=dsel_size,
+                val_cv_split=tuning_cv_inner_n_splits,
+                scoring=tuning_scoring,
+                random_state=random_state + run_id,
+                n_jobs=tuning_n_jobs,
+            )
         )
 
         # Extract selected feature indices and names
         selected_indices, selected_names = get_final_selected_features(
             pipeline=best_des_model,
             feature_names=transformed_feature_names,
+        )
+
+        # Collect resubstitution metrics and log for the pool
+        collect_report_one_fold(
+            resubstitution_rows,
+            experiment_name=experiment_name,
+            iteration=iteration_idx + 1,
+            fold=fold_idx + 1,
+            model=des_model_name,
+            metrics=resubstitution_metrics,
+            data_split="resubstitution",
+            fold_size=len(X_train),
+            **tuning_results,
+            selected_features_indices=selected_indices,
+            selected_features_names=selected_names,
         )
 
         # Collect generalization metrics and log
