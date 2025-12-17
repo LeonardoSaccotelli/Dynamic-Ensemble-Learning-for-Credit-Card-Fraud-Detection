@@ -167,7 +167,7 @@ def compute_classification_metrics(
     }
 
 
-def collect_report_one_fold(
+def collect_single_report_one_fold(
     store: List[Dict[str, Any]],
     *,
     experiment_name: str,
@@ -226,7 +226,7 @@ def collect_report_one_fold(
     Examples
     --------
     >>> rows = []
-    >>> collect_report_one_fold(
+    >>> collect_single_report_one_fold(
     ...     rows,
     ...     experiment_name="baseline-v1",
     ...     iteration=0,
@@ -248,3 +248,165 @@ def collect_report_one_fold(
         **extra,
     }
     store.append(row)
+
+
+def collect_fold_reports(
+    *,
+    resubstitution_rows: List[Dict[str, Any]],
+    generalization_rows: List[Dict[str, Any]],
+    experiment_name: str,
+    iteration: int,
+    fold: int,
+    model_name: str,
+    resubstitution_metrics: Dict[str, Any],
+    test_metrics: Dict[str, Any],
+    fold_size_train: int,
+    fold_size_test: int,
+    selected_features_indices: Sequence[int],
+    selected_features_names: Sequence[str],
+    tuning_results: Dict[str, Any] | None = None,
+) -> None:
+    """
+    Append standardized per-fold reporting rows for resubstitution and test splits.
+
+    This helper writes two report rows (one for the training/resubstitution split and
+    one for the held-out test/generalization split) into the provided row buffers.
+    It delegates the actual row construction to ``collect_single_report_one_fold`` and
+    ensures consistent metadata and feature-selection fields across both splits.
+
+    If ``tuning_results`` is provided, its key/value pairs are appended only to the
+    **resubstitution** row (i.e., the row where ``data_split="resubstitution"``),
+    enabling a single place to store inner-CV tuning summaries alongside the
+    training-set metrics.
+
+    Parameters
+    ----------
+    resubstitution_rows : List[Dict[str, Any]]
+        Mutable list acting as an output buffer that will receive a single row
+        dictionary for the resubstitution split.
+
+    generalization_rows : List[Dict[str, Any]]
+        Mutable list acting as an output buffer that will receive a single row
+        dictionary for the test/generalization split.
+
+    experiment_name : str
+        Experiment identifier (e.g., a label encoding resampling policy, cost-sensitive
+        learning setting, or any other experimental condition). Stored in both rows.
+
+    iteration : int
+        Outer repetition index (e.g., in a repeated cross-validation scheme). Stored
+        in both rows.
+
+    fold : int
+        Outer fold index. Stored in both rows.
+
+    model_name : str
+        Model identifier used for reporting (e.g., ``"SVC"``, ``"RandomForestClassifier"``,
+        ``"METADES"``). Stored in both rows.
+
+    resubstitution_metrics : Dict[str, Any]
+        Metrics dictionary computed on the training split (resubstitution).
+        Passed through to ``collect_single_report_one_fold`` as ``metrics=...`` for the
+        resubstitution row.
+
+    test_metrics : Dict[str, Any]
+        Metrics dictionary computed on the held-out test split (generalization).
+        Passed through to ``collect_single_report_one_fold`` as ``metrics=...`` for the
+        test row.
+
+    fold_size_train : int
+        Number of samples in the training split for this outer fold. Stored in the
+        resubstitution row as ``fold_size``.
+
+    fold_size_test : int
+        Number of samples in the test split for this outer fold. Stored in the test
+        row as ``fold_size``.
+
+    selected_features_indices : Sequence[int]
+        Indices of the selected features for this fold (after preprocessing / feature
+        selection). Stored in both rows to enable later feature-selection frequency
+        analysis.
+
+    selected_features_names : Sequence[str]
+        Names of the selected features for this fold (aligned with
+        ``selected_features_indices``). Stored in both rows.
+
+    tuning_results : Dict[str, Any] | None, default=None
+        Optional tuning summary dictionary (e.g., from RandomizedSearchCV or similar).
+        If provided, its items are expanded into keyword arguments and forwarded only
+        to the resubstitution row writer. If ``None``, no tuning fields are added.
+
+        Typical keys include (but are not limited to): ``best_params``, CV mean/std
+        scores, and tuning wall-clock time.
+
+    Returns
+    -------
+    None
+        This function mutates ``resubstitution_rows`` and ``generalization_rows`` in place.
+
+    Raises
+    ------
+    TypeError
+        If ``tuning_results`` contains keys that conflict with explicit keyword
+        arguments of ``collect_single_report_one_fold`` (e.g., overlapping names such as
+        ``experiment_name``), or if the values cannot be serialized/handled by the
+        downstream reporter.
+
+    Notes
+    -----
+    - ``tuning_results`` is applied only to the resubstitution row to avoid duplicating
+      tuning metadata in the test row.
+    - Both rows always include feature-selection fields (indices and names) so that
+      downstream analyses can align performance metrics with selected feature subsets.
+    - The exact schema of each row is determined by ``collect_single_report_one_fold``.
+
+    Examples
+    --------
+    >>> resubstitution_rows, generalization_rows = [], []
+    >>> collect_fold_reports(
+    ...     resubstitution_rows=resubstitution_rows,
+    ...     generalization_rows=generalization_rows,
+    ...     experiment_name="COST_SENSITIVE_NO_RESAMPLING",
+    ...     iteration=0,
+    ...     fold=3,
+    ...     model_name="SVC",
+    ...     resubstitution_metrics={"f1": 0.95, "roc_auc": 0.99},
+    ...     test_metrics={"f1": 0.82, "roc_auc": 0.93, "score_time": 0.12},
+    ...     fold_size_train=18000,
+    ...     fold_size_test=2000,
+    ...     selected_features_indices=[0, 2, 5],
+    ...     selected_features_names=["V1", "V3", "Amount_log1p"],
+    ...     tuning_results={"best_params": {"classifier__C": 1.0}, "tuning_time": 12.4},
+    ... )
+    >>> len(resubstitution_rows), len(generalization_rows)
+    (1, 1)
+    """
+
+    tuning_kwargs = tuning_results or {}
+
+    collect_single_report_one_fold(
+        resubstitution_rows,
+        experiment_name=experiment_name,
+        iteration=iteration,
+        fold=fold,
+        model=model_name,
+        metrics=resubstitution_metrics,
+        data_split="resubstitution",
+        fold_size=fold_size_train,
+        **tuning_kwargs,
+        selected_features_indices=selected_features_indices,
+        selected_features_names=selected_features_names,
+    )
+
+    collect_single_report_one_fold(
+        generalization_rows,
+        experiment_name=experiment_name,
+        iteration=iteration,
+        fold=fold,
+        model=model_name,
+        metrics=test_metrics,
+        data_split="generalization",
+        fold_size=fold_size_test,
+        selected_features_indices=selected_features_indices,
+        selected_features_names=selected_features_names,
+    )
