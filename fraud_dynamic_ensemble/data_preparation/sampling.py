@@ -478,7 +478,7 @@ def apply_sampling(
     """
     Dispatch a sampling request to the selected strategy.
 
-    This is a thin, case-insensitive router that forwards arguments to one of:
+    This is a thin, case-sensitive router that forwards arguments to one of:
     - ``random_sampling`` (uniform, without replacement)
     - ``stratified_random_sampling`` (preserve class proportions of ``target``)
     - ``keep_all_minority_random_sampling`` (include **all** minority rows, add majority)
@@ -491,7 +491,7 @@ def apply_sampling(
     df : pandas.DataFrame
         Input dataset to sample from.
     policy : str
-        Sampling policy (case-insensitive). Accepted values:
+        Sampling policy (case-sensitive). Accepted values:
         ``'random'``, ``'stratified'``, ``'keep_all_minority'``.
     target : str, default 'Class'
         Target/stratification column. Used by ``'stratified'`` and
@@ -591,7 +591,7 @@ def get_resampling_pipeline(
     Return an **imblearn sampler instance** for the chosen resampling strategy
     (not a Pipeline). Use this directly inside your pipeline as a step.
 
-    Accepted canonical names (case-insensitive)
+    Accepted canonical names (case-sensitive)
     ------------------------------------------------
     Undersampling:
       'RandomUnderSampler', 'NearMiss', 'TomekLinks', 'EditedNearestNeighbours',
@@ -609,7 +609,7 @@ def get_resampling_pipeline(
     Parameters
     ----------
     strategy_name : str or None
-        Canonical sampler class name, case-insensitive (e.g., 'SMOTE').
+        Canonical sampler class name, case-sensitive (e.g., 'SMOTE').
         If None or 'none', returns 'passthrough'.
     **kwargs : dict
         Arguments forwarded to the sampler constructor.

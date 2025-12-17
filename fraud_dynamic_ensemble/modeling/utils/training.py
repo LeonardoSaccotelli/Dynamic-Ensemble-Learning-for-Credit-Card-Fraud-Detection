@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import time
-from typing import Any, Dict, List, Sequence, Tuple, Union
+from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 import warnings
 
 from imblearn.pipeline import Pipeline as ImbPipeline
@@ -224,29 +224,33 @@ def train_and_evaluate_one_fold_static_model(
 ) -> tuple[
     Union[ImbPipeline, Pipeline, BaseEstimator],
     Dict[str, Any],
-    Dict[str, float],
-    Dict[str, float],
+    Dict[str, Optional[float] | int],
+    Dict[str, Optional[float] | int],
 ]:
     """
     Tune and evaluate a static (non-DES) classifier on a single outer CV fold.
 
-    This helper performs model selection and evaluation for one outer split:
+    This helper runs inner-CV hyperparameter tuning on the provided outer training split,
+    refits the best configuration on the full outer training data, and then reports
+    performance on both the training (resubstitution) and held-out outer test split.
 
+    Workflow
+    --------
     1. **Hyperparameter tuning (inner CV)**:
-       Runs a randomized CV search (delegated to :func:`_run_randomized_search_cv`) on
-       the provided training split ``(X_train, y_train)``, using a stratified K-fold
-       splitter with shuffling. The best configuration is refit on the full training split.
+       Uses :func:`run_randomized_search_cv` to perform randomized search over ``search_space``
+       on ``(X_train, y_train)`` with a stratified K-fold splitter.
 
     2. **Resubstitution evaluation (train metrics)**:
-       Computes metrics on the same training split used for fitting the refit model.
+       Computes metrics on ``(X_train, y_train)`` using the refit best estimator.
 
     3. **Generalization evaluation (test metrics)**:
-       Computes metrics on the held-out outer test split ``(X_test, y_test)``, and reports
-       an additional ``"score_time"`` field measuring the wall-clock time for generating
-       hard predictions on ``X_test``.
+       Computes metrics on ``(X_test, y_test)`` using the refit best estimator and appends
+       ``"score_time"`` measuring the wall-clock time spent generating both hard predictions
+       and probabilities on ``X_test`` (i.e., it wraps ``predict`` + ``predict_proba`` in this
+       implementation).
 
     All metrics are computed via :func:`compute_classification_metrics`. This implementation
-    assumes binary classification and uses positive-class probabilities from
+    assumes binary classification and extracts positive-class probabilities as
     ``predict_proba(X)[:, 1]``.
 
     Parameters
@@ -256,12 +260,11 @@ def train_and_evaluate_one_fold_static_model(
         This implementation also requires ``predict_proba`` to compute probability-based
         metrics on both train and test splits.
 
-        If ``base_model`` is a pipeline, hyperparameter names in ``search_space`` must follow
-        the scikit-learn double-underscore convention using the pipeline step name
-        (e.g., ``"classifier__C"``).
+        If ``base_model`` is a pipeline, parameter names in ``search_space`` must follow the
+        scikit-learn double-underscore convention (e.g., ``"classifier__C"``,
+        ``"feature_selection_filter__k"``).
     search_space : Dict[str, Any]
-        Parameter distributions (or explicit candidate lists) for randomized tuning. This
-        dictionary is forwarded to the tuning routine as the hyperparameter search space.
+        Hyperparameter distributions or explicit candidate lists used during randomized tuning.
         Keys must correspond to valid parameters of ``base_model``.
     X_train : Union[pandas.DataFrame, numpy.ndarray]
         Training features for the outer fold, shape ``(n_train_samples, n_features)``.
@@ -278,31 +281,30 @@ def train_and_evaluate_one_fold_static_model(
     val_cv_split : int, default=5
         Number of folds for the inner stratified CV used during tuning.
     scoring : str, default="f1"
-        Scoring identifier used to select the best hyperparameter configuration during
-        tuning (e.g., ``"f1"``, ``"average_precision"``, ``"roc_auc"``).
+        Scoring identifier used to select the best hyperparameter configuration during tuning
+        (e.g., ``"f1"``, ``"average_precision"``, ``"roc_auc"``).
     random_state : int, default=42
         Random seed forwarded to the inner CV splitter (shuffling) and to the randomized
         hyperparameter sampling.
     n_jobs : int, default=-1
-        Parallelism level used during hyperparameter tuning. Use ``-1`` to use all
-        available cores. To avoid nested parallelism, configure the underlying estimator's
-        own ``n_jobs`` appropriately (often ``1`` on HPC).
+        Parallelism level used during hyperparameter tuning. Use ``-1`` to use all available
+        cores. To avoid nested parallelism, configure the underlying estimator's own ``n_jobs``
+        appropriately (often ``1`` on HPC).
 
     Returns
     -------
     best_model : Union[imblearn.pipeline.Pipeline, sklearn.pipeline.Pipeline, sklearn.base.BaseEstimator]
-        Best estimator found by the randomized search, refit on the full outer training
-        split.
+        Best estimator found by the randomized search, refit on the full outer training split.
     tuning_results : Dict[str, Any]
-        Tuning summary returned by :func:`_run_randomized_search_cv` (best candidate).
-        The exact schema depends on the helper implementation.
-    resubstitution_metrics : Dict[str, float]
+        Tuning summary returned by :func:`run_randomized_search_cv` for the best candidate
+        (e.g., CV mean/std scores, best params, tuning time).
+    resubstitution_metrics : Dict[str, Optional[float] | int]
         Metrics computed on the training split via :func:`compute_classification_metrics`.
-    test_metrics : Dict[str, float]
-        Metrics computed on the test split via :func:`compute_classification_metrics`,
-        plus:
-        - ``"score_time"``: wall-clock time (seconds) measured around
-          ``best_model.predict(X_test)`` only.
+    test_metrics : Dict[str, Optional[float] | int]
+        Metrics computed on the test split via :func:`compute_classification_metrics`, plus:
+        - ``"score_time"`` : float
+          Wall-clock time (seconds) measured around the test-time prediction calls in this
+          function (``predict`` and ``predict_proba``).
 
     Raises
     ------
@@ -310,21 +312,26 @@ def train_and_evaluate_one_fold_static_model(
         If the refit ``best_model`` does not expose ``predict_proba`` (required by this
         implementation).
     ValueError
-        If tuning fails due to invalid ``search_space`` keys, incompatible ``scoring``, or
-        an invalid CV configuration.
+        If tuning fails due to invalid ``search_space`` keys, incompatible ``scoring``, or an
+        invalid CV configuration (raised by scikit-learn inside :func:`run_randomized_search_cv`).
+    Exception
+        Any exception raised by the underlying estimator/pipeline during fitting or prediction
+        may propagate (in particular, because the tuning helper uses ``error_score="raise"``).
 
     Notes
     -----
     - **Binary classification convention:** probabilities are extracted as
       ``predict_proba(X)[:, 1]``.
-    - ``score_time`` measures only the time for hard predictions (``predict``) on the test
-      split; it does not include probability prediction time (``predict_proba``).
-    - All data preprocessing/resampling is assumed to be encapsulated inside ``base_model``
-      when it is a pipeline.
+    - ``score_time`` as implemented includes both ``predict`` and ``predict_proba`` on the
+      test split. If you want to time only hard predictions, move the timer so it wraps only
+      ``predict``.
+    - Any preprocessing, feature selection, and/or resampling should be encapsulated inside
+      ``base_model`` when it is a pipeline; when used in CV, this is what ensures leakage-safe
+      fitting of those steps.
 
     Examples
     --------
-    >>> best_model, tuning, resub_metrics, test_metrics = train_and_evaluate_one_fold_static_model(
+    >>> best_model, tuning_results, resubstitution_metrics, test_metrics = train_and_evaluate_one_fold_static_model(
     ...     base_model=base_model,
     ...     search_space={"classifier__C": [0.1, 1.0, 10.0]},
     ...     X_train=X_train,
@@ -338,7 +345,7 @@ def train_and_evaluate_one_fold_static_model(
     ...     random_state=42,
     ...     n_jobs=-1,
     ... )
-    >>> tuning["best_params"]
+    >>> tuning_results["best_params"]
     """
 
     # Run RandomizedSearchCV
@@ -367,8 +374,8 @@ def train_and_evaluate_one_fold_static_model(
     logger.info("[COMPUTING GENERALIZATION METRICS]...")
     start_score_time = time.time()
     y_test_pred = best_model.predict(X_test)
-    end_score_time = time.time()
     y_test_pred_prob = best_model.predict_proba(X_test)[:, 1]
+    end_score_time = time.time()
 
     test_metrics = compute_classification_metrics(y_test, y_test_pred, y_test_pred_prob)
     test_metrics["score_time"] = end_score_time - start_score_time
@@ -396,50 +403,51 @@ def train_and_evaluate_one_fold_des_model(
 ) -> tuple[
     Pipeline,
     Dict[str, Any],
-    Dict[str, float],
-    Dict[str, float | int],
+    Dict[str, Optional[float] | int],
+    Dict[str, Optional[float] | int],
 ]:
     """
     Train and evaluate a Dynamic Ensemble Selection (DES) model on a single outer CV fold.
 
-    This function implements a standard two-stage DES workflow within one outer split:
+    This helper implements a leakage-safe, two-stage DES workflow within one outer split:
 
     1. **Split outer-train into pool-train and DSEL**
-       The provided outer training fold ``(X_train, y_train)`` is stratified-split into:
+       The outer training fold ``(X_train, y_train)`` is stratified-split into:
        - a *pool-training* subset (used to tune/fit the pool pipeline), and
        - a *DSEL* subset (used to fit the DES competence model).
 
-    2. **Tune + refit the pool pipeline**
+    2. **Tune + refit the pool pipeline (inner CV)**
        The pool pipeline (``pool_classifiers``) is tuned on the pool-training subset via a
-       randomized CV search (delegated to :func:`_run_randomized_search_cv`). The resulting
-       fitted pipeline is used to:
+       randomized CV search (delegated to :func:`run_randomized_search_cv`). The best
+       configuration is refit on the full pool-training subset, producing a fitted pipeline
+       that is then used to:
        - compute pool resubstitution metrics on the pool-training subset, and
-       - provide the fitted preprocessing and fitted pool estimator needed by DES.
+       - provide the fitted preprocessing and fitted pool estimator required by DES.
 
     3. **Fit the DES model on DSEL**
        The fitted preprocessing portion of the tuned pool pipeline (all steps before the
-       ``"resampling"`` step) is applied to DSEL (via ``transform``). The fitted pool
-       estimator is extracted from the tuned pipeline's ``"classifier"`` step and injected
-       into the DES configuration as ``des_conf["pool_classifiers"]``. The DES estimator
-       is then fitted on transformed DSEL.
+       ``"resampling"`` step) is applied to DSEL via ``transform``. The fitted pool estimator
+       is extracted from the tuned pipeline's ``"classifier"`` step and injected into the DES
+       configuration under ``pool_classifiers``. The DES estimator is then fitted on the
+       transformed DSEL data.
 
     4. **Build inference pipeline and evaluate on outer-test**
        A final inference pipeline is created as ``preprocessing -> DES`` (no resampling).
-       Predictions are generated on ``X_test``; probabilities are used if available.
+       Predictions are generated on ``X_test``; probabilities are used when available.
        Metrics are computed via :func:`compute_classification_metrics`, and a ``"score_time"``
-       field is added to the returned test metrics.
+       field is added to the test metrics.
 
     Parameters
     ----------
     des_model : sklearn.base.BaseEstimator
         Unfitted DES estimator (typically from DESlib) implementing ``fit`` and ``predict``.
-        If ``predict_proba`` is available on the final pipeline, probability-based metrics
-        can be computed on the test set.
+        If the final pipeline exposes ``predict_proba``, probability-based metrics can be
+        computed on the test set.
     des_conf : Dict[str, Any]
-        Parameter dictionary passed to ``des_model.set_params(**des_conf)``.
-        This dictionary is **mutated in-place**: the function injects the fitted pool as
-        ``des_conf["pool_classifiers"] = fitted_pool`` before configuring the DES model.
-        If you want to avoid side effects, pass a copy (e.g., ``des_conf.copy()``).
+        Parameter dictionary forwarded to ``des_model.set_params(**...)``.
+        This function does **not** mutate ``des_conf``. A local shallow copy is created
+        internally to inject the fitted pool as ``pool_classifiers`` before calling
+        ``set_params``.
     pool_classifiers : Union[imblearn.pipeline.Pipeline, sklearn.pipeline.Pipeline, sklearn.base.BaseEstimator]
         Pool pipeline (or estimator) to be tuned on the pool-training subset.
         In the current implementation, it is expected to be a pipeline containing:
@@ -447,10 +455,9 @@ def train_and_evaluate_one_fold_des_model(
         - a step named ``"classifier"`` (the fitted pool to inject into DES).
         All steps before ``"resampling"`` must support ``transform``.
     search_space : Dict[str, Any]
-        Hyperparameter distributions or candidate lists used to tune ``pool_classifiers``
-        (randomized search). Keys must match valid parameter names of the pool pipeline
-        using the double-underscore convention (e.g., ``"classifier__n_estimators"``,
-        ``"feature_selection_filter__k"``).
+        Hyperparameter distributions or candidate lists used to tune ``pool_classifiers``.
+        Keys must match valid parameter names of the pool pipeline using the double-underscore
+        convention (e.g., ``"classifier__n_estimators"``, ``"feature_selection_filter__k"``).
     X_train : Union[pandas.DataFrame, numpy.ndarray]
         Features for the outer training fold, shape ``(n_train_samples, n_features)``.
     y_train : Union[pandas.Series, numpy.ndarray]
@@ -488,23 +495,23 @@ def train_and_evaluate_one_fold_des_model(
           (all steps before ``"resampling"``), followed by
         - the fitted DES estimator as the final step named ``"classifier"``.
     tuning_results : Dict[str, Any]
-        Tuning summary returned by :func:`_run_randomized_search_cv` (best candidate).
-        The exact schema depends on the helper implementation.
-    pool_resubstitution_metrics : Dict[str, float]
+        Tuning summary returned by :func:`run_randomized_search_cv` for the best candidate
+        (e.g., CV mean/std scores, best params, tuning time).
+    pool_resubstitution_metrics : Dict[str, Optional[float] | int]
         Metrics computed on the pool-training subset using the tuned pool pipeline.
         This requires that the tuned pool pipeline implements ``predict_proba``.
-    test_metrics : Dict[str, float | int]
-        Metrics computed on the outer test fold using the final DES inference pipeline,
-        plus:
-        - ``"score_time"``: wall-clock time (seconds) spent generating predictions on the
-          test fold (including the attempted ``predict_proba`` call, if supported).
+    test_metrics : Dict[str, Optional[float] | int]
+        Metrics computed on the outer test fold using the final DES inference pipeline, plus:
+        - ``"score_time"`` : float
+          Wall-clock time (seconds) measured around the test-time prediction calls in this
+          function (``predict`` plus the attempted ``predict_proba``).
 
     Raises
     ------
     ValueError
-        If ``dsel_size`` is not in ``(0, 1)``, if stratified splitting fails, or if the
-        tuning helper fails due to invalid configuration (e.g., incompatible ``scoring`` or
-        invalid parameter names in ``search_space``).
+        If ``dsel_size`` is not in ``(0, 1)``, if stratified splitting fails, or if tuning
+        fails due to invalid configuration (e.g., incompatible ``scoring`` or invalid
+        parameter names in ``search_space``).
     KeyError
         If the tuned pool pipeline does not contain required steps (notably ``"resampling"``
         and/or ``"classifier"``).
@@ -524,15 +531,14 @@ def train_and_evaluate_one_fold_des_model(
     - **Binary classification convention:** when probabilities are available, the positive
       class probability is taken as ``predict_proba(X)[:, 1]``.
     - **Test probabilities are optional:** if ``final_des_pipeline.predict_proba`` is not
-      available, ``y_test_pred_proba`` is set to ``None``. In that case,
-      :func:`compute_classification_metrics` must tolerate ``None`` for probability-based
-      metrics.
+      available, ``y_test_pred_proba`` is set to ``None`` and probability-based metrics are
+      returned as ``None`` by :func:`compute_classification_metrics`.
 
     Examples
     --------
     >>> final_pipe, tuning, pool_resub, test_metrics = train_and_evaluate_one_fold_des_model(
     ...     des_model=des_model,
-    ...     des_conf=des_conf.copy(),
+    ...     des_conf=des_conf,
     ...     pool_classifiers=pool_pipeline,
     ...     search_space=pool_space,
     ...     X_train=X_train,
@@ -596,11 +602,12 @@ def train_and_evaluate_one_fold_des_model(
     fitted_pool = best_pipe_pool_classifiers.named_steps["classifier"]
 
     # Add the trained pool of classifiers to the DES model config
-    des_conf["pool_classifiers"] = fitted_pool
+    des_conf_local = dict(des_conf)  # shallow copy is enough
+    des_conf_local["pool_classifiers"] = fitted_pool
 
     # Fit DES model on DSEL in transformed space
     logger.info("[FITTING DSEL METHOD]...")
-    des_model.set_params(**des_conf)
+    des_model.set_params(**des_conf_local)
     des_model.fit(X_dsel_trans, y_dsel)
 
     # Final inference pipeline: preprocessing -> DES
@@ -709,9 +716,9 @@ def train_and_evaluate_one_fold_all_models(
         Global counter for the current outer split, typically coming from
         ``enumerate(cv_outer.split(X, y))``.
     iteration_idx : int
-        0-based index of the outer repetition.
+        0-based outer repetition index (0..n_repeats-1). Stored as 1-based in output rows via ``iteration_idx + 1``.
     fold_idx : int
-        0-based index of the fold within the current repetition.
+        0-based fold index within the repetition (0..n_splits-1). Stored as 1-based in output rows via ``fold_idx + 1``.
     train_idx : numpy.ndarray
         Indices of samples used as training data for this outer fold.
     test_idx : numpy.ndarray

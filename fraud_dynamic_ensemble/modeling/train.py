@@ -210,13 +210,11 @@ def main(
     )
 
     # Prepare standardization indices and post-preprocessing feature order
-    (
-        idx_num_features_to_standardize,
-        features_name,
-        transformed_feature_names,
-    ) = build_standardization_and_feature_order(
-        X=X,
-        numerical_features_to_standardize=NUMERICAL_FEATURES_TO_STANDARDIZE,
+    idx_num_features_to_standardize, original_feature_names, transformed_feature_names = (
+        build_standardization_and_feature_order(
+            X=X,
+            numerical_features_to_standardize=NUMERICAL_FEATURES_TO_STANDARDIZE,
+        )
     )
 
     logger.info(
