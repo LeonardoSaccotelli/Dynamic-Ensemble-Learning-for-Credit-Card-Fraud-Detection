@@ -16,48 +16,49 @@ def save_dict_json(
     sort_keys: bool = False,
 ) -> None:
     """
-    Save a dictionary to a JSON file, either overwriting or appending.
+    Serialize a mapping to JSON on disk (overwrite or JSON Lines append).
 
-    This function does **not** create parent directories. If the destination
-    directory does not exist, a ``FileNotFoundError`` is raised.
+    In write mode (``mode='w'``), this function writes a single pretty-printed JSON
+    object. In append mode (``mode='a'``), it appends one compact JSON object per
+    line (NDJSON/JSON Lines). Parent directories are not created.
 
     Parameters
     ----------
     data : Mapping[str, Any]
         Dictionary-like object to serialize.
     path : str or pathlib.Path
-        Destination file path (parent directory must already exist).
-    mode : {"w", "a"}, default "w"
-        Write mode:
-        - "w": overwrite with a single pretty-printed JSON object.
-        - "a": append one compact JSON object per line (JSON Lines / NDJSON).
+        Destination file path. The parent directory must already exist.
+    mode : {'w', 'a'}, default 'w'
+        Output mode. If ``'w'``, overwrite with a single pretty-printed JSON object.
+        If ``'a'``, append one JSON object per line (JSON Lines / NDJSON).
     ensure_ascii : bool, default False
-        If False, write UTF-8 characters as-is; if True, escape non-ASCII.
+        If ``False``, write UTF-8 characters as-is. If ``True``, escape non-ASCII
+        characters.
     sort_keys : bool, default False
-        Sort dictionary keys in the output.
+        If ``True``, sort dictionary keys in the output.
 
     Returns
     -------
     None
+        This function writes to disk and returns nothing.
 
     Raises
     ------
     ValueError
-        If ``mode`` is not one of {"w", "a"}.
+        If ``mode`` is not one of ``{'w', 'a'}``.
     FileNotFoundError
         If the parent directory of ``path`` does not exist.
 
     Notes
     -----
-    - Appending uses **JSON Lines** format (one JSON object per line), which is
-      not a single valid JSON document. Use tools that support NDJSON.
+    - Append mode writes JSON Lines (NDJSON), which is not a single valid JSON
+      document. Use tools/readers that support line-delimited JSON.
+    - This function does not create parent directories.
 
     Examples
     --------
-    Overwrite with pretty JSON:
     >>> save_dict_json({"run_id": 1, "score": 0.92}, "reports/metrics/run_1.json")
 
-    Append as JSON Lines:
     >>> save_dict_json({"fold": 0, "ap": 0.88}, "reports/metrics/log.jsonl", mode="a")
     """
 
