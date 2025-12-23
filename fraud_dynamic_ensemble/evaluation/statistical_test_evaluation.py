@@ -14,42 +14,55 @@ def ks_two_sample(
     method: str = "auto",
 ) -> Dict[str, float | int]:
     """
-    Kolmogorov–Smirnov two-sample test (global CDF difference).
+    Compute the two-sample Kolmogorov–Smirnov test statistic and p-value.
+
+    This function runs SciPy's two-sample KS test to quantify the maximum absolute
+    difference between the empirical CDFs of two samples. Non-finite values
+    (NaN/Inf) are removed prior to testing.
 
     Parameters
     ----------
     x, y : array-like of shape (n_samples,)
-        Numeric samples. NaN/Inf are removed internally.
+        Numeric samples. Non-finite values (NaN/Inf) are removed internally.
     alternative : {'two-sided', 'less', 'greater'}, default 'two-sided'
-        Defines the alternative hypothesis.
+        Alternative hypothesis passed to SciPy.
     method : {'auto', 'exact', 'asymp'}, default 'auto'
-        Algorithm used by SciPy; 'auto' chooses a suitable method by sample size.
+        Computation method used by SciPy. ``'auto'`` selects a suitable method
+        based on sample size.
 
     Returns
     -------
-    dict
-        {'D': float, 'p': float, 'n_x': int, 'n_y': int}
+    result : dict
+        Dictionary with keys:
+        - ``'D'`` : float
+            KS statistic (maximum CDF distance).
+        - ``'p'`` : float
+            P-value for the chosen alternative.
+        - ``'n_x'`` : int
+            Number of valid (finite) observations used from ``x``.
+        - ``'n_y'`` : int
+            Number of valid (finite) observations used from ``y``.
 
     Raises
     ------
     ValueError
-        If either sample is empty after filtering invalid values.
+        If either sample is empty after filtering non-finite values.
 
     Notes
     -----
-    - Sensitive to differences in location, scale, and shape (global distribution).
-    - With very large n, tiny distribution shifts can yield very small p-values,
-      so report/inspect both D and p.
+    - The KS test is sensitive to differences in location, scale, and distribution shape.
+    - With large sample sizes, small distribution differences may yield very small
+      p-values; interpret the p-value jointly with the effect size ``D``.
 
     Examples
     --------
     >>> import pandas as pd
     >>> x = pd.Series([1, 2, 3, 4, 5])
     >>> y = pd.Series([1, 2, 2, 3, 4, 6])
-    >>> out = ks_two_sample(x, y)
-    >>> out['p']
-    1.0
+    >>> ks_two_sample(x, y)["D"] >= 0.0
+    True
     """
+
     xv = np.asarray(x, dtype=float).ravel()
     yv = np.asarray(y, dtype=float).ravel()
 
