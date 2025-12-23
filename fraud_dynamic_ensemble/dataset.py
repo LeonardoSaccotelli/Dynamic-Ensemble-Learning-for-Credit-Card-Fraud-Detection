@@ -16,36 +16,55 @@ def main(
     output_path: Path = EXTERNAL_DATA_DIR / EXTERNAL_FILENAME,
 ) -> None:
     """
-    Ensure the **external** credit card fraud dataset is available locally,
-    downloading it from Kaggle if missing.
+    Ensure the external credit card fraud dataset is available locally, downloading it if missing.
 
-    The function checks whether ``output_path`` exists. If not, it downloads the
-    Kaggle dataset ``mlg-ulb/creditcardfraud`` via ``kagglehub.dataset_download()``,
-    verifies that the expected CSV file (``creditcard.csv``) is present in the
-    downloaded directory, creates ``EXTERNAL_DATA_DIR`` if needed, and copies the
-    file to ``output_path``. Progress and outcomes are logged via Loguru.
+    This entry point verifies whether the dataset CSV exists at ``output_path``. If it is not
+    present, it attempts to download the Kaggle dataset ``mlg-ulb/creditcardfraud`` using
+    ``kagglehub.dataset_download()``, checks that the expected file ``creditcard.csv`` exists
+    in the downloaded directory, ensures ``EXTERNAL_DATA_DIR`` exists, and copies the CSV to
+    ``output_path``. If the file already exists, it logs that no action is needed.
 
     Parameters
     ----------
     output_path : pathlib.Path, optional
-        Destination path for the **external** dataset CSV. Defaults to
+        Destination path for the external dataset CSV. Defaults to
         ``EXTERNAL_DATA_DIR / EXTERNAL_FILENAME``.
 
     Returns
     -------
     None
-        Side effects only (download, directory creation, file copy, and logging).
+        This function returns nothing. It performs side effects only (download, directory
+        creation, file copy, and logging).
 
     Raises
     ------
     typer.Exit
-        Raised with code ``1`` if the dataset cannot be downloaded or the expected
-        CSV is not found after download.
+        Raised with exit code ``1`` if the dataset download fails or if the expected
+        ``creditcard.csv`` file is not found after download.
+    PermissionError
+        If the output directory cannot be created or the destination file cannot be written due
+        to insufficient permissions.
+    OSError
+        If an OS-related error occurs during directory creation or file copying.
+    Exception
+        Any unexpected exception raised by the Kaggle download utility or file I/O may be caught
+        and converted into ``typer.Exit(code=1)`` by this function's error handling.
 
     Notes
     -----
-    - ``kagglehub`` may require prior Kaggle credentials/configuration.
-    - The expected filename inside the Kaggle package is ``creditcard.csv``.
+    - ``kagglehub`` may require Kaggle credentials/configuration to be available in the runtime
+      environment.
+    - The function assumes the downloaded Kaggle package contains a file named
+      ``creditcard.csv`` at the top level of the download directory.
+    - The function ensures ``EXTERNAL_DATA_DIR`` exists (not necessarily ``output_path.parent``
+      if a different path is provided).
+    - The implementation uses logging for progress and outcomes and does not return data.
+
+    Examples
+    --------
+    Run using the module script (paths shown as examples)::
+
+        python fraud_dynamic_ensemble/dataset.py --output-path data/external/creditcardfraud.csv
     """
 
     logger.info("Running fraud_dynamic_ensemble/dataset.py ...")

@@ -32,61 +32,83 @@ def main(
     period: int = DAY_SECONDS,
 ) -> None:
     """
-    Deterministic, leakage-safe feature engineering for the fraud dataset.
+    Perform deterministic, leakage-safe feature engineering and write the processed fraud dataset.
 
-    This CLI entrypoint loads the **cleaned** dataset, applies purely row-wise
-    transformations, and writes a processed CSV:
+    This CLI entry point loads the cleaned (interim) dataset and applies strictly row-wise
+    transformations that do not depend on global dataset statistics:
 
-    1) Add ``Amount_log1p`` via ``np.log1p(Amount)`` and drop ``Amount``.
-    2) Add ``Time_sin`` and ``Time_cos`` using the given ``period`` and drop ``Time``.
-    3) Move the target column to the last position for convenience.
-    4) Persist the result to ``output_path``.
+    1) Creates ``Amount_log1p`` using ``np.log1p`` applied to the ``Amount`` column and drops
+       the original ``Amount`` column.
+    2) Encodes the ``Time`` column into periodic features ``Time_sin`` and ``Time_cos`` using
+       the provided ``period`` and drops the original ``Time`` column.
+    3) Reorders columns so that the target column appears last.
+    4) Ensures the processed data directory exists and writes the resulting dataset to
+       ``output_path`` as a CSV.
 
-    All transforms are element-wise (no data-wide statistics), so they do **not**
-    introduce data leakage. Any scaling/standardization should be handled later
-    inside the modeling pipeline.
+    Because all transformations are element-wise, the procedure is leakage-safe. Any scaling,
+    standardization, resampling, or model-dependent preprocessing is expected to be performed
+    later within the modeling pipeline.
 
     Parameters
     ----------
-    input_path : pathlib.Path, default: ``INTERIM_DATA_DIR / INTERIM_FILENAME``
-        Path to the cleaned (interim) dataset CSV.
-    output_path : pathlib.Path, default: ``PROCESSED_DATA_DIR / PROCESSED_FILENAME``
-        Destination path for the processed dataset CSV with engineered features.
-    target : str, default: ``"Class"``
-        Name of the target column; logged before/after transformations and moved last.
-    period : int, default: ``DAY_SECONDS``
-        Period used to encode ``Time`` into ``Time_sin``/``Time_cos``. Must match the
-        unit of ``Time`` (e.g., seconds-in-day = 86,400).
+    input_path : pathlib.Path, optional
+        Path to the cleaned interim dataset CSV. Defaults to
+        ``INTERIM_DATA_DIR / INTERIM_FILENAME``.
+    output_path : pathlib.Path, optional
+        Destination path for the processed dataset CSV. Defaults to
+        ``PROCESSED_DATA_DIR / PROCESSED_FILENAME``.
+    target : str, optional
+        Name of the target column. Used for class-distribution logging and moved to the last
+        column position in the output. Defaults to ``"Class"``.
+    period : int, optional
+        Period used to compute the trigonometric encoding of ``Time`` into ``Time_sin`` and
+        ``Time_cos``. Must be expressed in the same unit as the ``Time`` column
+        (e.g., seconds per day = 86,400). Defaults to ``DAY_SECONDS``.
 
     Returns
     -------
     None
-        Side-effecting function: logging and file I/O.
+        This function returns nothing. It performs side effects only (logging, directory
+        creation, and CSV writing).
 
     Raises
     ------
     typer.Exit
-        If ``input_path`` does not exist.
-    KeyError
-        If required columns (e.g., ``"Amount"``, ``"Time"``, or ``target``) are missing.
-    ValueError
-        Propagated from row-wise transformers (e.g., invalid ``period`` or
-        ``Amount < -1`` for ``log1p``).
+        Raised with exit code ``1`` if ``input_path`` does not exist.
     pandas.errors.EmptyDataError
-        If the input CSV is empty.
+        If the input CSV is empty or has no columns to parse.
     pandas.errors.ParserError
-        If the CSV cannot be parsed.
+        If the input CSV is malformed and cannot be parsed.
+    KeyError
+        If required columns are missing (for example: ``"Amount"``, ``"Time"``, or ``target``),
+        potentially raised by downstream transformation utilities.
+    ValueError
+        Propagated from transformation utilities for invalid values or configuration (for
+        example: invalid ``period`` or values outside the domain of ``log1p``).
     PermissionError
-        If the output CSV cannot be written due to insufficient permissions.
+        If the processed directory cannot be created or the output CSV cannot be written due to
+        insufficient permissions.
     OSError
-        For OS-related errors during directory creation or file writing.
+        If an OS-related error occurs during directory creation or file writing.
 
     Notes
     -----
-    - Row-wise transforms only → **no leakage**.
-    - ``Amount_log1p`` uses ``np.log1p`` (defined for ``x >= -1``).
-    - ``Time_sin``/``Time_cos`` are computed as ``sin(2π⋅x/period)`` and ``cos(2π⋅x/period)``.
-    - The function ensures ``PROCESSED_DATA_DIR`` exists before saving.
+    - All transformations are row-wise and deterministic, so they do not introduce data leakage.
+    - ``Amount_log1p`` is created via ``np.log1p`` (defined for inputs ``>= -1``).
+    - ``Time_sin`` and ``Time_cos`` are computed using the standard periodic encoding:
+      ``sin(2π·t/period)`` and ``cos(2π·t/period)``.
+    - The target column is moved to the last position to simplify downstream inspection and
+      pipeline construction.
+
+    Examples
+    --------
+    Run the script with the default daily period (seconds-in-day)::
+
+        python fraud_dynamic_ensemble/features.py
+
+    Run the script with a custom period (only if ``Time`` is expressed in that unit)::
+
+        python fraud_dynamic_ensemble/features.py --period 86400
     """
 
     logger.info("Running fraud_dynamic_ensemble/features.py ...")

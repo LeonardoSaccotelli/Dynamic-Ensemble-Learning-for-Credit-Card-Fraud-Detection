@@ -25,45 +25,61 @@ def main(
     target: str = "Class",
 ) -> None:
     """
-    Clean the raw credit card fraud dataset and save a **deduplicated** CSV.
+    Clean the raw credit card fraud dataset by removing duplicate rows and writing an INTERIM CSV.
 
-    This script performs only the cleaning steps that are currently needed,
-    given that the Data Understanding phase already confirmed the absence of
-    NA rows. Specifically, it:
-      1) Loads the RAW dataset.
-      2) Reports per-column missing values (for transparency; no NA-row drop).
-      3) Removes duplicate rows.
-      4) Logs class distribution **before** and **after** deduplication using ``target``.
-      5) Ensures the INTERIM output directory exists and writes the cleaned CSV.
+    This entry point performs the minimum cleaning currently required by the project. It:
+
+    1) loads the RAW CSV at ``input_path``,
+    2) logs dataset shape and class distribution (using ``target``) before cleaning,
+    3) removes duplicate rows (all columns; first occurrence kept),
+    4) logs the number of duplicates removed, updated shape, and class distribution after cleaning,
+    5) ensures ``INTERIM_DATA_DIR`` exists, then writes the cleaned CSV to ``output_path``.
 
     Parameters
     ----------
-    input_path : Path, optional
-        Path to the RAW dataset CSV to be cleaned. Default:
-        ``RAW_DATA_DIR / RAW_FILENAME``.
-    output_path : Path, optional
-        Destination path for the cleaned dataset CSV. Default:
-        ``INTERIM_DATA_DIR / INTERIM_FILENAME``.
+    input_path : pathlib.Path, optional
+        Path to the RAW dataset CSV to clean. Defaults to ``RAW_DATA_DIR / RAW_FILENAME``.
+    output_path : pathlib.Path, optional
+        Destination path for the cleaned CSV. Defaults to ``INTERIM_DATA_DIR / INTERIM_FILENAME``.
     target : str, optional
-        Target column used for class distribution logs. Default: ``"Class"``.
+        Name of the target column used to compute and log class distribution.
+        Defaults to ``"Class"``.
 
     Returns
     -------
     None
-        Side effects only (logging and file I/O).
+        This function returns nothing. It performs logging and writes a CSV file to disk.
 
     Raises
     ------
     typer.Exit
-        If the input file is missing or the target column is not found.
+        If ``input_path`` does not exist.
+    KeyError
+        If ``target`` is not present in the loaded dataframe and downstream helpers
+        (e.g., class statistics computation) require it.
     pandas.errors.EmptyDataError
-        If the input file is empty or has no columns to parse.
+        If ``input_path`` is empty or contains no parsable columns.
     pandas.errors.ParserError
-        If the CSV is malformed and cannot be parsed.
+        If the CSV is malformed and cannot be parsed by pandas.
     PermissionError
-        If the cleaned file cannot be written due to insufficient permissions.
+        If the output directory cannot be created or the cleaned CSV cannot be written due to
+        insufficient permissions.
     OSError
         If an OS-related error occurs during directory creation or file writing.
+
+    Notes
+    -----
+    - Deduplication is performed across all columns (``subset=None``) and keeps the first
+      occurrence (``keep="first"``).
+    - The function ensures ``INTERIM_DATA_DIR`` exists (not necessarily ``output_path.parent``
+      if a different path is provided).
+    - All outputs are produced via side effects (logging + file I/O).
+
+    Examples
+    --------
+    Run using the module script (paths shown as examples)::
+
+        python fraud_dynamic_ensemble/cleaning.py --input-path data/raw/credit_card_fraud_sampling.csv --output-path data/interim/credit_card_fraud_cleaned.csv --target Class
     """
 
     logger.info("Running fraud_dynamic_ensemble/cleaning.py ...")

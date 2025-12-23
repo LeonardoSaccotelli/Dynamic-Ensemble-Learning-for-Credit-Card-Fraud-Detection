@@ -57,113 +57,117 @@ def main(
     """
     Run the full training workflow for the credit-card fraud project (STATIC, STATIC-ENSEMBLE, DES).
 
-    This Typer command executes a repeated stratified outer CV loop and, for each outer split,
-    trains and evaluates:
+    This Typer CLI entry point loads the processed dataset, prepares features/labels for both
+    scikit-learn and DESlib compatibility, executes a repeated stratified outer CV loop, and
+    persists per-model results to disk.
 
-    - **STATIC** models (single estimators wrapped in an imblearn pipeline),
-    - **STATIC ENSEMBLES** (e.g., Voting/Stacking ensembles wrapped in the same pipeline), and
-    - **DES** models (DESlib competence models using a tuned pool and a DSEL split).
+    The workflow executed is:
 
-    High-level workflow
-    -------------------
-    1) Load the processed dataset (CSV) from ``input_path``.
-    2) Shuffle rows once (global shuffle) using ``RANDOM_STATE``.
-    3) Split into features/labels::
-
-           X = df.drop([target], axis=1)
-           y = df[target]
-
-    4) Build standardization indices and post-preprocessing feature ordering using
+    1) Load the processed dataset (CSV) from ``input_path`` and log class distribution.
+    2) Perform a single global shuffle using ``RANDOM_STATE`` to randomize row order.
+    3) Split the dataset into features and target using ``target``.
+    4) Build standardization indices and the post-preprocessing feature ordering via
        :func:`build_standardization_and_feature_order`.
-    5) Convert ``X`` and ``y`` to NumPy arrays for DESlib compatibility.
-    6) Build the outer evaluation loop via :class:`sklearn.model_selection.RepeatedStratifiedKFold`.
-    7) Execute all outer folds (sequentially if ``outer_n_jobs == 1``; otherwise in parallel via joblib).
-       For each outer fold, the fold orchestrator (:func:`train_and_evaluate_one_fold_all_models`) will:
-       - tune and evaluate each STATIC model using the pipeline
-         (scaling → SelectKBest → optional resampling → classifier),
-       - tune and evaluate each STATIC ENSEMBLE model using the same pipeline structure,
-       - tune the DES pool pipeline on the pool-training split, fit the DES competence model on DSEL,
-         and evaluate the DES inference pipeline on the outer test fold,
-       - compute **resubstitution metrics** for:
-           * STATIC / STATIC-ENSEMBLE models on the full outer training set, and
-           * DES models on the fitted **pool** (on the pool-training subset used internally by the
-             DES helper),
-       - compute **generalization metrics** on the outer test fold for all model families.
-    8) Aggregate fold-level rows in memory, then persist results **per model** under the
-       experiment folder.
+    5) Convert ``X`` and ``y`` to NumPy arrays (required by DESlib in downstream helpers).
+    6) Build the outer evaluation loop using :class:`sklearn.model_selection.RepeatedStratifiedKFold`.
+    7) Execute each outer fold (sequentially when ``outer_n_jobs == 1``; otherwise in parallel
+       using :class:`joblib.Parallel`). Each fold delegates the full model orchestration to
+       :func:`train_and_evaluate_one_fold_all_models`, which:
+       - tunes and evaluates STATIC models,
+       - tunes and evaluates STATIC ENSEMBLES (e.g., Voting/Stacking),
+       - tunes a DES pool, fits the DES competence model on a DSEL split, and evaluates the
+         DES inference pipeline on the outer test fold,
+       - produces fold-level rows for both resubstitution and generalization metrics.
+    8) Aggregate all fold-level rows in memory and persist results **per model** under the
+       experiment directory.
 
     Parameters
     ----------
-    input_path : pathlib.Path, default=PROCESSED_DATA_DIR / PROCESSED_FILENAME
-        Path to the **processed** dataset (CSV) containing engineered features and the
-        target column.
-    experiment_name : str, default=EXPERIMENT_NAME
-        Experiment folder name created under ``model_path``.
-    experiment_description : str, default=EXPERIMENT_DESCRIPTION
+    input_path : pathlib.Path, optional
+        Path to the processed dataset CSV containing engineered features and the target column.
+        Defaults to ``PROCESSED_DATA_DIR / PROCESSED_FILENAME``.
+    experiment_name : str, optional
+        Experiment folder name created under ``model_path``. Defaults to ``EXPERIMENT_NAME``.
+    experiment_description : str, optional
         Free-text description stored in each model folder’s ``experiment_config.json``.
-    model_path : pathlib.Path, default=MODELS_DIR
-        Root directory where the experiment folder will be created and results saved.
-    target : str, default="Class"
-        Name of the target column in ``input_path``.
-    outer_n_jobs : int, default=CV_OUTER_PARALLEL_N_JOBS
-        Number of outer CV folds to execute in parallel.
-        - ``1``  → sequential execution (default in many HPC-safe settings).
-        - ``>1`` → parallelize outer folds with :class:`joblib.Parallel`.
+        Defaults to ``EXPERIMENT_DESCRIPTION``.
+    model_path : pathlib.Path, optional
+        Root directory where the experiment folder is created and results are saved.
+        Defaults to ``MODELS_DIR``.
+    target : str, optional
+        Name of the target column in the input dataset. Defaults to ``"Class"``.
+    outer_n_jobs : int, optional
+        Number of outer CV folds executed in parallel.
+        - ``1`` executes folds sequentially.
+        - ``> 1`` parallelizes folds using :class:`joblib.Parallel`.
 
-        When using ``outer_n_jobs > 1``, it is usually recommended to set the inner-tuning
-        parallelism (``TUNING_N_JOBS``) to ``1`` to avoid nested parallelism and CPU
-        oversubscription.
+        To avoid nested parallelism and CPU oversubscription, it is generally recommended to
+        keep inner-tuning parallelism low (often ``TUNING_N_JOBS = 1``) when ``outer_n_jobs > 1``.
+        Defaults to ``CV_OUTER_PARALLEL_N_JOBS``.
 
-    Feature Selection
-    -----------------
-    The training pipelines include :class:`sklearn.feature_selection.SelectKBest`:
-
-    - ``FS_K_BEST_TO_KEEP`` sets the default ``k`` used to build the pipeline.
-    - ``FS_K_BEST_CANDIDATES`` is forwarded to :func:`train_and_evaluate_one_fold_all_models`
-      to optionally extend the tuning search space with ``feature_selection_filter__k``.
-
-    Side Effects
-    ------------
-    - Creates/updates directories under::
-
-          <model_path>/<experiment_name>/<MODEL_NAME>/
-
-    - Writes (per model) the following files:
-      - ``generalization_metrics_summary.csv``:
-        metrics on the outer test fold for the model (STATIC / STATIC-ENSEMBLE / DES).
-      - ``resubstitution_metrics_summary.csv``:
-        - STATIC / STATIC-ENSEMBLE: metrics on the outer training set,
-        - DES: metrics on the tuned/fitted **pool** used by DES (computed within the DES helper).
-      - ``experiment_config.json``:
-        the experiment tracking dictionary replicated in each model folder.
-
-    - Produces logging via the configured :mod:`loguru` ``logger``.
+    Returns
+    -------
+    None
+        Side effects only (training, logging, and persistence of outputs).
 
     Raises
     ------
     typer.Exit
-        If ``input_path`` does not exist.
+        Raised with code ``1`` if ``input_path`` does not exist.
     KeyError
-        If ``target`` is not a column in the loaded dataset.
+        If ``target`` is not a column in the loaded dataset when splitting features/labels.
     ValueError
-        If requested features to standardize are not present in the dataset, or if output
-        DataFrames are missing mandatory columns (e.g., ``"model"``).
+        If requested numerical features to standardize are not present (raised by
+        :func:`build_standardization_and_feature_order`), or if the produced summary DataFrames
+        are missing mandatory columns (e.g., ``"model"``).
     RuntimeError
-        If no models are found in the produced results (nothing to persist), or if a model
-        has missing metrics rows (generalization or resubstitution), since both are expected
-        for every trained model key.
+        If no models are found in the aggregated results (nothing to persist), or if any model
+        is missing expected metrics rows (generalization and/or resubstitution).
+    pandas.errors.EmptyDataError
+        If the input CSV is empty or has no columns to parse.
+    pandas.errors.ParserError
+        If the input CSV is malformed and cannot be parsed.
+    PermissionError
+        If experiment/model folders or output files cannot be created/written due to insufficient
+        permissions.
+    OSError
+        If an OS-related error occurs during directory creation or file writing.
 
     Notes
     -----
     Persistence layout
-        Results are saved only inside per-model subfolders. The previously-used “global”
-        CSVs at the experiment root are not produced.
+        Results are persisted **only** inside per-model subfolders:
 
-    Parallel execution note
+        ``<model_path>/<experiment_name>/<MODEL_NAME>/``
+
+        Each model folder contains:
+        - ``generalization_metrics_summary.csv`` (outer-test metrics),
+        - ``resubstitution_metrics_summary.csv`` (train-side metrics; for DES this refers to the tuned pool),
+        - ``experiment_config.json`` (experiment tracking metadata replicated per model).
+
+    Parallel execution
         When ``outer_n_jobs > 1``, joblib may use process-based parallelism (backend-dependent).
-        Ensure objects passed to workers are picklable. If you encounter serialization issues
-        due to the logger, consider adapting the fold worker signature to support ``logger=None``
-        and configure per-process logging (or emit fold logs to stdout only).
+        Ensure objects captured by the fold worker are picklable. If logger serialization becomes
+        problematic in your environment, consider fold-level logging strategies compatible with
+        multiprocessing.
+
+    Feature selection
+        ``SelectKBest`` is included in the modeling pipelines. Candidate values for ``k`` may be
+        tuned when ``FS_K_BEST_CANDIDATES`` is provided and injected by the fold orchestrator.
+
+    Examples
+    --------
+    Run with defaults:
+
+        python fraud_dynamic_ensemble/train.py
+
+    Run specifying a different experiment name and sequential execution:
+
+        python fraud_dynamic_ensemble/train.py --experiment-name baseline-v2 --outer-n-jobs 1
+
+    Run parallelizing outer folds (ensure inner tuning does not also saturate CPUs):
+
+        python fraud_dynamic_ensemble/train.py --outer-n-jobs 10
     """
 
     logger.info("Running fraud_dynamic_ensemble/train.py ...")

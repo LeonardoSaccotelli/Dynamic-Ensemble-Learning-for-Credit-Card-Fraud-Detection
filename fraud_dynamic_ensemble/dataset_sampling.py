@@ -37,51 +37,88 @@ def main(
     seed: int = RANDOM_STATE,
 ) -> None:
     """
-    CLI entry-point (dataset_sampling.py) to create a RAW subsample from the EXTERNAL full dataset.
+    Create a RAW subsample from the EXTERNAL credit card fraud dataset.
 
-    Workflow
-    --------
-    1) Load the external dataset (CSV).
-    2) Log **pre-sampling** class statistics.
-    3) Apply the chosen sampling strategy via ``apply_sampling``.
-    4) Log **post-sampling** class statistics.
-    5) Write the subsample to ``output_path`` as CSV.
+    This CLI entry point loads the full external CSV dataset, logs pre-sampling class
+    distribution statistics, applies a sampling strategy via ``apply_sampling``, logs the
+    post-sampling class distribution, ensures the RAW data directory exists, and writes the
+    resulting subsample to ``output_path`` as a CSV.
+
+    The sampling behavior is controlled by ``policy`` and the mutually exclusive size controls
+    ``n_rows`` and ``frac``. When using the ``keep_all_minority`` policy, ``ratio`` determines
+    the majority-per-minority sampling ratio.
 
     Parameters
     ----------
-    input_path : pathlib.Path, default: EXTERNAL_DATA_DIR / EXTERNAL_FILENAME
-        Path to the **external** full dataset (CSV).
-    output_path : pathlib.Path, default: RAW_DATA_DIR / RAW_FILENAME
-        Destination path for the **raw subsample** (CSV).
-    target : str, default: "Class"
-        Name of the target column.
-    policy : {'random', 'stratified', 'keep_all_minority'}, default: POLICY
-        Sampling policy (case-insensitive).
-    n_rows : int or None, optional, default: N_ROWS
-        Absolute number of rows requested (mutually exclusive with ``frac``).
-    frac : float or None, optional, default: FRAC
-        Fraction of the dataset in ``(0, 1]`` (mutually exclusive with ``n_rows``).
-    ratio : int or None, optional, default: RATIO
-        Only for ``'keep_all_minority'``: majority-per-minority ratio (e.g., 50 → 1:50).
-    seed : int, default: RANDOM_STATE
-        Random seed for reproducibility.
+    input_path : pathlib.Path, optional
+        Path to the external (full) dataset CSV. Defaults to
+        ``EXTERNAL_DATA_DIR / EXTERNAL_FILENAME``.
+    output_path : pathlib.Path, optional
+        Destination path for the raw subsampled dataset CSV. Defaults to
+        ``RAW_DATA_DIR / RAW_FILENAME``.
+    target : str, optional
+        Name of the target column used to compute class statistics and to drive sampling policies
+        that require labels. Defaults to ``"Class"``.
+    policy : str, optional
+        Sampling policy identifier (case-insensitive) forwarded to ``apply_sampling``.
+        Typical values include ``"random"``, ``"stratified"``, and ``"keep_all_minority"``.
+        Defaults to ``POLICY``.
+    n_rows : int or None, optional
+        Absolute number of rows requested for the subsample. Mutually exclusive with ``frac``.
+        Defaults to ``N_ROWS``.
+    frac : float or None, optional
+        Fraction of the dataset to sample in ``(0, 1]``. Mutually exclusive with ``n_rows``.
+        Defaults to ``FRAC``.
+    ratio : int or None, optional
+        Majority-per-minority ratio used only when ``policy`` is ``"keep_all_minority"``
+        (e.g., ``50`` corresponds to a 1:50 minority:majority ratio). Defaults to ``RATIO``.
+    seed : int, optional
+        Random seed forwarded to the sampling routine for reproducibility. Defaults to
+        ``RANDOM_STATE``.
 
     Returns
     -------
     None
-        Side effects only (logging, sampling, CSV writing).
+        This function returns nothing. It performs side effects only (logging, sampling, and CSV
+        writing).
 
     Raises
     ------
     typer.Exit
-        If ``input_path`` does not exist or ``target`` is missing from the dataset.
+        Raised with exit code ``1`` if ``input_path`` does not exist or if ``target`` is not a
+        column in the loaded dataset.
+    pandas.errors.EmptyDataError
+        If the input CSV is empty or has no columns to parse.
+    pandas.errors.ParserError
+        If the input CSV is malformed and cannot be parsed.
     ValueError
-        May be raised by the underlying sampling functions for invalid combinations
-        (e.g., both ``n_rows`` and ``frac``, non-binary target for keep-all-minority, etc.).
+        May be raised by ``apply_sampling`` for invalid configurations (for example: both
+        ``n_rows`` and ``frac`` provided, invalid ``policy``, invalid ``frac`` range, invalid
+        ``ratio`` for keep-all-minority, or non-binary targets when required).
+    PermissionError
+        If the RAW directory cannot be created or the output CSV cannot be written due to
+        insufficient permissions.
+    OSError
+        If an OS-related error occurs during directory creation or file writing.
 
     Notes
     -----
-    - I/O is **CSV-only** by design.
+    - I/O is intentionally CSV-only in this CLI workflow.
+    - The function normalizes ``policy`` to lowercase before calling ``apply_sampling`` for
+      consistent behavior and logging.
+    - ``ratio`` is meaningful only for the ``keep_all_minority`` policy; other policies may
+      ignore it.
+    - The function logs class distribution before and after sampling using ``get_class_stats``.
+
+    Examples
+    --------
+    Run the script to produce a stratified subsample by fraction::
+
+        python fraud_dynamic_ensemble/dataset_sampling.py --policy stratified --frac 0.10
+
+    Run the script to keep all minority samples and cap majority at 50× minority::
+
+        python fraud_dynamic_ensemble/dataset_sampling.py --policy keep_all_minority --ratio 50
     """
 
     logger.info("Running fraud_dynamic_ensemble/dataset_sampling.py ...")
