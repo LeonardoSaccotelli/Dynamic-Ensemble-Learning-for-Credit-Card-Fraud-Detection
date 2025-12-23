@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, Iterable, Tuple
+from typing import Any, Dict, Iterable, Sequence, Tuple
 
 from deslib.dcs import LCA, MLA, OLA, APosteriori, APriori
 from deslib.des import DESKNN, DESP, KNOP, KNORAE, KNORAU, METADES, DESClustering
@@ -14,7 +14,10 @@ from sklearn.ensemble import (
     ExtraTreesClassifier,
     GradientBoostingClassifier,
     RandomForestClassifier,
+    StackingClassifier,
+    VotingClassifier,
 )
+from sklearn.linear_model import LogisticRegression
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.neural_network import MLPClassifier
 from sklearn.svm import SVC
@@ -358,24 +361,8 @@ def get_static_model_and_search_space(
     >>> # suppose your full pipeline has a step named "feature_selection_filter"
     >>> extended_space = dict(space)
     >>> extended_space["feature_selection_filter__k"] = [10, 20, 30, "all"]
-
-    Switch to XGBoost, disabling cost-sensitive tweaks:
-
-    >>> clf, space = get_static_model_and_search_space(
-    ...     "XGBClassifier",
-    ...     random_state=42,
-    ...     use_cost_sensitive_learning=False,
-    ... )
-    >>> pipe = Pipeline([("classifier", clf)])
-    >>> search = RandomizedSearchCV(
-    ...     estimator=pipe,
-    ...     param_distributions=space,
-    ...     n_iter=50,
-    ...     cv=5,
-    ...     n_jobs=-1,
-    ...     random_state=42,
-    ... )
     """
+
     model_configurations = {
         "SVC": {
             "model_class": SVC,
@@ -709,6 +696,168 @@ def get_static_model_and_search_space(
     return model, param_dist
 
 
+def get_static_ensemble_model_and_search_space(
+    ensemble_type: str,
+    model_pool: Sequence[str],
+    random_state: int | None = None,
+    use_cost_sensitive_learning: bool = True,
+) -> tuple[BaseEstimator, Dict[str, Any]]:
+    """
+    Build a static ensemble (Voting/Stacking) and a merged hyperparameter search space.
+
+    This factory builds an ensemble estimator from a list of base-model names and
+    merges the corresponding hyperparameter spaces into a single dictionary that is
+    compatible with scikit-learn parameter routing for nested estimators.
+
+    The function:
+    1) iterates over ``model_pool`` and calls :func:`get_static_model_and_search_space`
+       to obtain each base estimator and its search space,
+    2) assigns a unique name to each estimator instance (even if the same model appears
+       multiple times), and
+    3) rewrites each base search-space key so it targets the correct sub-estimator inside
+       the ensemble (e.g., ``classifier__svc_0__C``).
+
+    Supported ensembles:
+    - ``"VotingClassifier"``: soft voting over predicted probabilities.
+    - ``"StackingClassifier"``: stacked generalization with a LogisticRegression meta-learner.
+
+    Parameters
+    ----------
+    ensemble_type : str
+        Type of ensemble to build. Supported values:
+        - ``"VotingClassifier"``
+        - ``"StackingClassifier"``
+    model_pool : Sequence[str]
+        List of base-model identifiers to include (e.g., ``["XGBClassifier", "SVC"]``).
+        Duplicates are allowed; each occurrence becomes a separate estimator instance.
+    random_state : int | None, optional
+        Random seed forwarded to all base estimators (via the base factory) and to the
+        stacking meta-learner when applicable.
+    use_cost_sensitive_learning : bool, default=True
+        Forwarded to base estimators (via the base factory). For stacking, when True the
+        meta-learner LogisticRegression is configured with ``class_weight="balanced"``.
+
+    Returns
+    -------
+    estimator : sklearn.base.BaseEstimator
+        Instantiated ensemble estimator:
+        - :class:`sklearn.ensemble.VotingClassifier` if ``ensemble_type="VotingClassifier"``,
+        - :class:`sklearn.ensemble.StackingClassifier` if ``ensemble_type="StackingClassifier"``.
+    param_dist : Dict[str, Any]
+        Merged hyperparameter search space (param distributions / candidate lists) for all
+        sub-estimators.
+
+        The function assumes :func:`get_static_model_and_search_space` returns keys that are
+        valid for your *outer* pipeline, typically prefixed with ``"classifier__"``.
+        Each key is rewritten into the nested form required by the ensemble:
+
+        - Input key example: ``"classifier__C"``
+        - Output key example: ``"classifier__svc_0__C"``
+
+        These keys can be used directly in a ``RandomizedSearchCV`` over a pipeline whose
+        ``"classifier"`` step is the returned ensemble instance.
+
+    Raises
+    ------
+    ValueError
+        If ``model_pool`` is empty or if ``ensemble_type`` is not supported.
+
+    Notes
+    -----
+    - **Voting requires probabilities:** soft voting requires each base estimator to
+      implement ``predict_proba``. Ensure the base factory configures models accordingly
+      (e.g., ``SVC(probability=True)``).
+    - **Avoid nested parallelism:** this factory sets ensemble ``n_jobs=1``. Use outer-level
+      parallelism (e.g., RandomizedSearchCV ``n_jobs``) instead, and keep base estimators'
+      own ``n_jobs`` aligned with your HPC strategy.
+    - **Key rewriting strategy:** keys are rewritten by stripping a leading ``"classifier__"``
+      prefix. If your base factory returns a different prefix (e.g., ``"model__"``), adapt
+      the rewriting logic accordingly.
+
+    Examples
+    --------
+    >>> # Build a soft-voting ensemble of two base models and tune both.
+    >>> ensemble, ensemble_space = get_static_ensemble_model_and_search_space(
+    ...     ensemble_type="VotingClassifier",
+    ...     model_pool=["SVC", "XGBClassifier"],
+    ...     random_state=42,
+    ...     use_cost_sensitive_learning=True,
+    ... )
+    >>> # Plug the returned estimator into your outer pipeline under the "classifier" step.
+    >>> pipe = build_model_pipeline(
+    ...     estimator=ensemble,
+    ...     numerical_features_to_standardize=["Amount_log1p"],
+    ...     fs_k_best_to_keep=20,
+    ...     resampling_method=None,
+    ...     resampling_params=None,
+    ... )
+    >>> # Now the search space targets the correct nested estimator params.
+    >>> sorted(list(ensemble_space.keys()))[:3]  # doctest: +ELLIPSIS
+    [...]
+    """
+    if not model_pool:
+        raise ValueError("model_pool list cannot be empty.")
+
+    estimators = []
+    ensemble_param_dist = {}
+
+    # 1. Build Base Estimators and Merge Spaces
+    for idx, model_name in enumerate(model_pool):
+        # Retrieve the base model and its specific search space
+        base_model, base_space = get_static_model_and_search_space(
+            model_name,
+            random_state=random_state,
+            use_cost_sensitive_learning=use_cost_sensitive_learning,
+        )
+
+        # Create a unique name for this estimator instance (e.g., 'xgbclassifier_0')
+        # This name is crucial for the scikit-learn parameter routing.
+        est_name = f"{model_name.lower()}_{idx}"
+        estimators.append((est_name, base_model))
+
+        # Rewrite search space keys.
+        # Original: "classifier__max_depth"
+        # Target (inside Pipeline > Ensemble): "classifier__<est_name>__max_depth"
+        for key, distribution in base_space.items():
+            # Remove the standard prefix provided by the factory function
+            # We assume the factory returns keys starting with "classifier__"
+            clean_param = key.replace("classifier__", "")
+
+            # Construct the new nested key
+            new_key = f"classifier__{est_name}__{clean_param}"
+            ensemble_param_dist[new_key] = distribution
+
+    # 2. Construct the Ensemble
+    if ensemble_type == "VotingClassifier":
+        # Soft voting returns the class label as argmax of the sum of predicted probabilities.
+        # This requires 'probability=True' in SVC (handled in base factory).
+        model = VotingClassifier(estimators=estimators, voting="soft", n_jobs=1)
+
+    elif ensemble_type == "StackingClassifier":
+        # Define the meta-learner
+        final_layer_args = {"random_state": random_state, "solver": "lbfgs", "max_iter": 1000}
+
+        if use_cost_sensitive_learning:
+            final_layer_args["class_weight"] = "balanced"
+
+        final_estimator = LogisticRegression(**final_layer_args)
+
+        model = StackingClassifier(
+            estimators=estimators,
+            final_estimator=final_estimator,
+            n_jobs=1,
+            # 'passthrough': False -> Train meta-model only on predictions of base models
+            passthrough=False,
+            cv=5,  # Internal CV for training the meta-model
+        )
+    else:
+        raise ValueError(
+            f"Unknown ensemble_type: {ensemble_type}. Use 'VotingClassifier' or 'StackingClassifier'."
+        )
+
+    return model, ensemble_param_dist
+
+
 def get_des_model(
     model_name: str,
     random_state: int | None = None,
@@ -811,31 +960,6 @@ def get_des_model(
     ...     "KNORAE",
     ...     random_state=42,
     ...     use_cost_sensitive_learning=True,
-    ... )
-
-    Typical integration (high-level) using your fold helper:
-
-    >>> pool_est, pool_space, des, des_kwargs = get_des_model("KNORAU", random_state=42)
-    >>> pool_pipe = build_model_pipeline(
-    ...     estimator=pool_est,
-    ...     numerical_features_to_standardize=idx_num_features_to_standardize,
-    ...     fs_k_best_to_keep=20,
-    ...     resampling_method="SMOTE",
-    ...     resampling_params={"sampling_strategy": 0.2, "random_state": 42},
-    ... )
-    >>> final_pipe, test_metrics = train_and_evaluate_one_fold_des_model(
-    ...     des_model=des,
-    ...     des_conf=dict(des_kwargs),          # copy, then mutate safely
-    ...     pool_classifiers=pool_pipe,
-    ...     search_space=pool_space,
-    ...     X_train=X_train, y_train=y_train,
-    ...     X_test=X_test,   y_test=y_test,
-    ...     n_iter=35,
-    ...     dsel_size=0.2,
-    ...     val_cv_split=5,
-    ...     scoring="average_precision",
-    ...     random_state=42,
-    ...     n_jobs=-1,
     ... )
     """
     # Pool: BaggingDecisionTreeClassifier + its search space

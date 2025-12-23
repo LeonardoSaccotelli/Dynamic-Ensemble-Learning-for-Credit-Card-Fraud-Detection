@@ -59,8 +59,45 @@ FS_K_BEST_CANDIDATES: list[int | str] = [20, 22, 24, 26, 28, "all"]
 
 # resampling method
 USE_COST_SENSITIVE_LEARNING = True
+
+# no resampling
 RESAMPLING_METHOD = None
 RESAMPLING_PARAMS = {}
+
+# undersampling parameters for RandomUnderSampler
+"""
+RESAMPLING_METHOD = "RandomUnderSampler"
+RESAMPLING_PARAMS = {
+    "random_state":RANDOM_STATE, 
+    "sampling_strategy":0.10, 
+    }"""
+
+# oversampling parameters for BorderlineSMOTE
+"""RESAMPLING_METHOD = "BorderlineSMOTE"
+RESAMPLING_PARAMS = {
+    "random_state":RANDOM_STATE, 
+    "sampling_strategy":0.20, 
+    "k_neighbors":5, 
+    "m_neighbors":10, 
+    "kind":"borderline-1"
+    }"""
+
+# hybrid parameters for SMOTETomek
+"""
+from imblearn.over_sampling import SMOTE
+from imblearn.under_sampling import TomekLinks
+
+RESAMPLING_METHOD = "SMOTETomek"
+RESAMPLING_PARAMS = {
+    "smote": SMOTE(
+        sampling_strategy=0.20,
+        random_state=RANDOM_STATE,
+        k_neighbors=5,
+    ),
+    "tomek": TomekLinks(sampling_strategy="auto"),
+    "random_state": RANDOM_STATE,
+}
+"""
 
 # outer evaluation setting: RepeatedStratifiedKFold (10 x 10)
 CV_OUTER_N_SPLITS = 10
@@ -68,7 +105,7 @@ CV_OUTER_N_REPEATS = 10
 CV_OUTER_PARALLEL_N_JOBS = 1
 
 # inner evaluation setting for dynamical ensemble models
-DSEL_SIZE = 0.15
+DSEL_SIZE = 0.20
 
 # inner evaluation setting for hyperparameters tuning: RandomizedSearchCV
 TUNING_N_ITER = 30
@@ -78,24 +115,38 @@ TUNING_N_JOBS = -1
 
 # classic ML model + static ensemble models
 STATIC_MODELS = [
-    "SVC",
-    "MLPClassifier",
-    "KNeighborsClassifier",
-    "DecisionTreeClassifier",
-    "RandomForestClassifier",
-    "XGBClassifier",
+    # "MLPClassifier",
+    # "KNeighborsClassifier",
+    # "DecisionTreeClassifier",
+    # "RandomForestClassifier",
+    # "BalancedRandomForestClassifier",
+    # "ExtraTreesClassifier",
+    # "LogitBoostClassifier",
+    # "XGBClassifier",
+    # "RUSBoostClassifier",
 ]
 
+STATIC_ENSEMBLE_MODELS = ["VotingClassifier"]
+STATIC_ENSEMBLE_POOLS = ["RandomForestClassifier", "XGBClassifier"]
+
+# des model
 DES_MODELS = [
-    "LCA",
-    "DESClustering",
-    "DESP",
-    "KNORAU",
-    "METADES"
+    # "APriori",
+    # "APosteriori",
+    # "MLA",
+    # "DESP",
+    # "DESKL",
+    # "Exponential",
+    # "Logarithmic",
+    # "RRC",
+    # "KNOP",
+    # "KNORAU",
+    # "KNORAE",
+    # "METADES",
 ]
 
 # experiment tracking
-EXPERIMENT_NAME = f"CostSensitiveLearning___RandomizedSearchCV__niter_{TUNING_N_ITER}__cv_{TUNING_CV_INNER_N_SPLITS}"
+EXPERIMENT_NAME = f"CostSensitiveLearning_with_SMOTETomek___RandomizedSearchCV__niter_{TUNING_N_ITER}__cv_{TUNING_CV_INNER_N_SPLITS}"
 EXPERIMENT_DESCRIPTION = ""
 
 #################################################################

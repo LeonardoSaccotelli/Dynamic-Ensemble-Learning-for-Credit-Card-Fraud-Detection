@@ -21,6 +21,7 @@ from fraud_dynamic_ensemble.evaluation.metrics_evaluation import (
 )
 from fraud_dynamic_ensemble.modeling.utils.models import (
     get_des_model,
+    get_static_ensemble_model_and_search_space,
     get_static_model_and_search_space,
 )
 from fraud_dynamic_ensemble.modeling.utils.pipeline import (
@@ -632,93 +633,94 @@ def train_and_evaluate_one_fold_des_model(
 
 
 def train_and_evaluate_one_fold_all_models(
-    run_id: int,
-    iteration_idx: int,
-    fold_idx: int,
-    train_idx: np.ndarray,
-    test_idx: np.ndarray,
-    X: np.ndarray,
-    y: np.ndarray,
-    experiment_name: str,
-    idx_num_features_to_standardize: Sequence[int],
-    transformed_feature_names: Sequence[str],
-    static_models: Sequence[str],
-    des_models: Sequence[str],
-    fs_k_best_to_keep: int | str,
-    fs_k_best_candidates: Sequence[int | str] | None,
-    use_cost_sensitive_learning: bool,
-    resampling_method: str | None,
-    resampling_params: Dict[str, Any] | None,
-    tuning_n_iter: int,
-    tuning_cv_inner_n_splits: int,
-    tuning_scoring: str,
-    tuning_n_jobs: int,
-    dsel_size: float,
-    random_state: int,
-    logger: Any,
+        run_id: int,
+        iteration_idx: int,
+        fold_idx: int,
+        train_idx: np.ndarray,
+        test_idx: np.ndarray,
+        X: np.ndarray,
+        y: np.ndarray,
+        experiment_name: str,
+        idx_num_features_to_standardize: Sequence[int],
+        transformed_feature_names: Sequence[str],
+        static_models: Sequence[str],
+        static_ensemble_models: Sequence[str],
+        static_ensemble_pools: Sequence[str],
+        des_models: Sequence[str],
+        fs_k_best_to_keep: int | str,
+        fs_k_best_candidates: Sequence[int | str] | None,
+        use_cost_sensitive_learning: bool,
+        resampling_method: str | None,
+        resampling_params: Dict[str, Any] | None,
+        tuning_n_iter: int,
+        tuning_cv_inner_n_splits: int,
+        tuning_scoring: str,
+        tuning_n_jobs: int,
+        dsel_size: float,
+        random_state: int,
+        logger: Any,
 ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
     """
-    Train and evaluate all STATIC and DES models on a single outer CV fold.
+    Train and evaluate all STATIC, STATIC-ENSEMBLE, and DES models on a single outer CV fold.
 
-    This helper encapsulates the full workflow for one outer split of a
-    ``RepeatedStratifiedKFold`` / ``RepeatedStratifiedKFold``-style experiment.
+    This helper encapsulates the full workflow for one outer split of a repeated
+    stratified CV experiment (e.g., :class:`sklearn.model_selection.RepeatedStratifiedKFold`).
     Given the global feature/label arrays and the current train/test indices, it:
 
-    1. Builds the outer fold datasets:
-       - ``(X_train, y_train) = (X[train_idx], y[train_idx])``
-       - ``(X_test,  y_test)  = (X[test_idx],  y[test_idx])``
-       and logs basic class-distribution statistics for both.
+    1. **Builds the outer fold datasets**
+        - ``(X_train, y_train) = (X[train_idx], y[train_idx])``
+           - ``(X_test,  y_test)  = (X[test_idx],  y[test_idx])``
+        and logs basic class-distribution statistics for both.
 
-    2. For each **STATIC** model name in ``static_models``:
-       - Retrieves the estimator and its *estimator-level* hyperparameter search space
-         via :func:`get_static_model_and_search_space`.
-       - Optionally injects a pipeline-level tuning dimension for SelectKBest by adding
-         ``"feature_selection_filter__k": list(fs_k_best_candidates)`` to the search space
-         when ``fs_k_best_candidates`` is provided.
-       - Builds the end-to-end pipeline via :func:`build_model_pipeline`
-         (preprocessing → SelectKBest → optional resampling → classifier).
-       - Tunes/refits and evaluates the model via :func:`train_and_evaluate_one_fold_static_model`,
-         producing:
-           * the best fitted pipeline,
-           * a tuning summary dict (e.g., best params / CV info),
-           * resubstitution (train) metrics,
-           * generalization (test) metrics.
-       - Extracts the final selected feature indices/names via :func:`get_final_selected_features`.
-       - Appends standardized report rows to ``resubstitution_rows`` and
-         ``generalization_rows`` via :func:`collect_fold_reports`.
+    2. **Trains each STATIC model** in ``static_models``
+        - Retrieves the estimator and its estimator-level search space via
+            :func:`get_static_model_and_search_space`.
+        - Optionally injects SelectKBest candidates by adding
+            ``"feature_selection_filter__k": list(fs_k_best_candidates)`` when provided.
+        - Builds the end-to-end pipeline via :func:`build_model_pipeline`
+            (preprocessing → SelectKBest → optional resampling → classifier).
+        - Tunes/refits and evaluates via :func:`train_and_evaluate_one_fold_static_model`,
+            returning the best fitted pipeline, tuning summary, resubstitution metrics, and
+            test metrics (with ``"score_time"``).
+        - Extracts the final selected feature indices/names via
+            :func:`get_final_selected_features`.
+        - Appends standardized report rows via :func:`collect_fold_reports`.
 
-    3. For each **DES** model name in ``des_models``:
-       - Retrieves:
-           * the bagging/ensemble pool estimator,
-           * the pool *estimator-level* search space,
-           * the (unfitted) DESlib competence model,
-           * a DES configuration dict
-         via :func:`get_des_model`.
-       - Optionally injects ``"feature_selection_filter__k"`` candidates into the pool
-         search space (same logic as STATIC).
-       - Builds the pool pipeline via :func:`build_model_pipeline`
-         (preprocessing → SelectKBest → optional resampling → pool estimator).
-       - Tunes the pool, fits the DES competence model on a DSEL split, and evaluates the
-         final pipeline via :func:`train_and_evaluate_one_fold_des_model`, producing:
-           * a fitted pipeline returned as ``best_des_model`` (as defined by the helper),
-           * a tuning summary dict,
-           * resubstitution metrics (for the tuned/fitted pool on the training side),
-           * generalization metrics (for DES inference on the outer test set).
-       - Extracts the final selected feature indices/names via :func:`get_final_selected_features`.
-       - Appends standardized report rows via :func:`collect_fold_reports`.
+    3. **Trains each STATIC ENSEMBLE model** in ``static_ensemble_models``
+        - Builds the ensemble estimator and its merged search space via
+            :func:`get_static_ensemble_model_and_search_space`, using ``static_ensemble_pools``
+            as the base-model pool (shared across ensemble types in this call).
+        - Optionally injects SelectKBest candidates using the same
+            ``"feature_selection_filter__k"`` mechanism.
+        - Builds and evaluates the full pipeline exactly like a STATIC model via
+            :func:`train_and_evaluate_one_fold_static_model`.
+        - Extracts selected features and appends report rows via :func:`collect_fold_reports`.
 
-    The function returns two lists of dict rows that are ready to be aggregated and
-    persisted at experiment level.
+    4. **Trains each DES model** in ``des_models``
+        - Retrieves the pool estimator, pool search space, DES estimator, and DES config via
+            :func:`get_des_model`.
+        - Optionally injects SelectKBest candidates into the *pool* search space.
+        - Builds the pool pipeline via :func:`build_model_pipeline`.
+        - Tunes the pool, fits the DES competence model on a DSEL split, and evaluates the
+            final inference pipeline via :func:`train_and_evaluate_one_fold_des_model`,
+            returning: final DES pipeline, tuning summary, pool-resubstitution metrics, and
+            DES test metrics (with ``"score_time"``).
+        - Extracts selected features and appends report rows via :func:`collect_fold_reports`.
+
+    The function returns two lists of row dictionaries (train-side and test-side) that are
+    ready to be aggregated and persisted at experiment level.
 
     Parameters
     ----------
     run_id : int
-        Global counter for the current outer split, typically coming from
+        Global counter for the current outer split, typically produced by
         ``enumerate(cv_outer.split(X, y))``.
     iteration_idx : int
-        0-based outer repetition index (0..n_repeats-1). Stored as 1-based in output rows via ``iteration_idx + 1``.
+        0-based repetition index (0..n_repeats-1). Stored as 1-based in output rows via
+        ``iteration_idx + 1``.
     fold_idx : int
-        0-based fold index within the repetition (0..n_splits-1). Stored as 1-based in output rows via ``fold_idx + 1``.
+        0-based fold index within the repetition (0..n_splits-1). Stored as 1-based in
+        output rows via ``fold_idx + 1``.
     train_idx : numpy.ndarray
         Indices of samples used as training data for this outer fold.
     test_idx : numpy.ndarray
@@ -732,11 +734,19 @@ def train_and_evaluate_one_fold_all_models(
     idx_num_features_to_standardize : Sequence[int]
         Column indices to be standardized by the preprocessing step.
     transformed_feature_names : Sequence[str]
-        Feature names aligned with the input of the ``"feature_selection_filter"`` step
+        Feature names aligned with the input to the ``"feature_selection_filter"`` step
         (i.e., after the ``"preprocessor"`` transformation). Used to map selected feature
         indices back to names.
     static_models : Sequence[str]
-        Names of static models to train (e.g., ``["SVC", "RandomForestClassifier"]``).
+        Names of static (single-estimator) models to train
+        (e.g., ``["SVC", "RandomForestClassifier"]``).
+    static_ensemble_models : Sequence[str]
+        Names of static ensemble types to train (e.g., ``["VotingClassifier", "StackingClassifier"]``).
+        These names are forwarded as ``ensemble_type`` to
+        :func:`get_static_ensemble_model_and_search_space`.
+    static_ensemble_pools : Sequence[str]
+        Pool of base-model names used to build *each* static ensemble instance in this fold
+        (e.g., ``["SVC", "XGBClassifier", "RandomForestClassifier"]``).
     des_models : Sequence[str]
         Names of DES models to train (e.g., ``["KNORAU", "METADES"]``).
     fs_k_best_to_keep : int | str
@@ -745,14 +755,13 @@ def train_and_evaluate_one_fold_all_models(
         ``"feature_selection_filter__k"``, the fitted value may differ from this default.
     fs_k_best_candidates : Sequence[int | str] | None
         Optional candidate values for ``SelectKBest.k`` to be explored during tuning.
-        When provided, candidates are injected by adding::
+        When provided, candidates are injected into the relevant search spaces by adding::
 
             "feature_selection_filter__k": list(fs_k_best_candidates)
 
-        into the corresponding hyperparameter search space.
     use_cost_sensitive_learning : bool
-        Whether to enable cost-sensitive behaviour (e.g., class weights) in both STATIC
-        models and DES pools. Forwarded to the model factory functions.
+        Whether to enable cost-sensitive behaviour (e.g., class weights) in STATIC models,
+        static ensembles, and DES pools. Forwarded to the model factory functions.
     resampling_method : str | None
         Canonical name of the resampling strategy (e.g., ``"SMOTE"``,
         ``"RandomUnderSampler"``, ``"SMOTEENN"``) or ``None`` to disable resampling.
@@ -769,39 +778,41 @@ def train_and_evaluate_one_fold_all_models(
         Number of parallel jobs used during hyperparameter tuning.
     dsel_size : float
         Fraction of the outer training set reserved for the DSEL subset used to fit DES
-        competence models (``0 < dsel_size < 1``).
+        competence models (must satisfy ``0 < dsel_size < 1``).
     random_state : int
-        Base random seed forwarded to models, inner CV splitters, and the DSEL split.
-        The tuning calls use ``random_state + run_id`` to diversify the randomized search
-        across outer folds.
+        Base random seed forwarded to factories and splitters. The tuning calls use
+        ``random_state + run_id`` to diversify randomized search sampling across outer folds.
     logger : Any
-        Logger instance exposing ``.info(str)`` (e.g., Loguru logger). This argument is
-        required and is used for fold-level diagnostics.
+        Logger instance exposing ``.info(str)`` (e.g., Loguru logger).
 
     Returns
     -------
     resubstitution_rows : List[Dict[str, Any]]
         Metrics rows on the **training** side of the current outer fold.
-        - STATIC models: resubstitution metrics computed on ``(X_train, y_train)``.
-        - DES models: resubstitution metrics computed for the tuned/fitted **pool**
-          (i.e., the ensemble used by the DES model).
+        - STATIC models: resubstitution metrics on ``(X_train, y_train)``.
+        - STATIC ENSEMBLES: resubstitution metrics on ``(X_train, y_train)``.
+        - DES models: resubstitution metrics computed for the tuned/fitted **pool** on the
+            pool-training subset used inside :func:`train_and_evaluate_one_fold_des_model`.
     generalization_rows : List[Dict[str, Any]]
         Metrics rows on the **test** side of the current outer fold.
-        - STATIC models: test metrics computed on ``(X_test, y_test)``.
-        - DES models: test metrics computed by the final DES inference pipeline on
-          ``(X_test, y_test)``.
+        - STATIC models: test metrics on ``(X_test, y_test)``.
+        - STATIC ENSEMBLES: test metrics on ``(X_test, y_test)``.
+        - DES models: test metrics produced by the final DES inference pipeline on
+            ``(X_test, y_test)``.
 
     Notes
     -----
     - Output rows use 1-based ``iteration`` and ``fold`` indices (``iteration_idx + 1``,
-      ``fold_idx + 1``) to simplify downstream reporting.
+        ``fold_idx + 1``).
     - Feature-selection tuning via ``"feature_selection_filter__k"`` assumes the pipeline
-      step is named exactly ``"feature_selection_filter"``.
-    - Tuning metadata (``tuning_results``) is passed to :func:`collect_fold_reports`; by
-      design, it is typically stored on the resubstitution row (not necessarily on the
-      test row), depending on the implementation of :func:`collect_fold_reports`.
-    - For DES models, the meaning of ``best_des_model`` and the exact definition of
-      resubstitution vs generalization metrics follow :func:`train_and_evaluate_one_fold_des_model`.
+        step is named exactly ``"feature_selection_filter"``.
+    - Tuning metadata (``tuning_results``) is forwarded to :func:`collect_fold_reports` and
+        is typically stored only on the resubstitution row (per your
+        :func:`collect_fold_reports` implementation).
+    - **Probability requirement:** :func:`train_and_evaluate_one_fold_static_model` requires
+        ``predict_proba`` for both train/test metrics. Therefore STATIC ENSEMBLES must be
+        configured to expose probabilities (e.g., soft voting, stacking with a probabilistic
+        meta-learner).
 
     Examples
     --------
@@ -830,6 +841,8 @@ def train_and_evaluate_one_fold_all_models(
                 idx_num_features_to_standardize=idx_num_features_to_standardize,
                 transformed_feature_names=transformed_feature_names,
                 static_models=["SVC", "RandomForestClassifier"],
+                static_ensemble_models=["VotingClassifier", "StackingClassifier"],
+                static_ensemble_pools=["SVC", "XGBClassifier"],
                 des_models=["KNORAU", "METADES"],
                 fs_k_best_to_keep=20,
                 fs_k_best_candidates=[10, 20, 30, "all"],
@@ -922,6 +935,77 @@ def train_and_evaluate_one_fold_all_models(
             iteration=iteration_idx + 1,
             fold=fold_idx + 1,
             model_name=static_model_name,
+            resubstitution_metrics=resubstitution_metrics,
+            test_metrics=test_metrics,
+            fold_size_train=len(X_train),
+            fold_size_test=len(X_test),
+            tuning_results=tuning_results,  # keep tuning info on resub row
+            selected_features_indices=selected_indices,
+            selected_features_names=selected_names,
+        )
+
+    # ----- Start training STATIC ENSEMBLE MODELS -----
+    for static_ensemble_model_name in static_ensemble_models:
+        print("-" * 165)
+        logger.info(f"Training STATIC ENSEMBLE model: {static_ensemble_model_name}")
+
+        # Get the static ensemble model estimator with its hyperparameter search space
+        static_ensemble_model_estimator, static_ensemble_model_search_space = (
+            get_static_ensemble_model_and_search_space(
+                ensemble_type=static_ensemble_model_name,
+                model_pool=static_ensemble_pools,
+                random_state=random_state,
+                use_cost_sensitive_learning=use_cost_sensitive_learning,
+            )
+        )
+
+        # Add the k candidates for SelectKBest to be tuned with the model
+        if fs_k_best_candidates is not None:
+            static_ensemble_model_search_space["feature_selection_filter__k"] = list(
+                fs_k_best_candidates
+            )
+
+        # Build the final pipeline: Preprocessing + Feature Selection + Resampling + Classifier
+        static_ensemble_model_pipeline = build_model_pipeline(
+            estimator=static_ensemble_model_estimator,
+            numerical_features_to_standardize=idx_num_features_to_standardize,
+            fs_k_best_to_keep=fs_k_best_to_keep,
+            resampling_method=resampling_method,
+            resampling_params=resampling_params,
+        )
+
+        # Tune the static model, fit on the training folds and evaluate on the test fold
+        best_static_ensemble_model, tuning_results, resubstitution_metrics, test_metrics = (
+            train_and_evaluate_one_fold_static_model(
+                base_model=static_ensemble_model_pipeline,
+                search_space=static_ensemble_model_search_space,
+                X_train=X_train,
+                y_train=y_train,
+                X_test=X_test,
+                y_test=y_test,
+                n_iter=tuning_n_iter,
+                val_cv_split=tuning_cv_inner_n_splits,
+                scoring=tuning_scoring,
+                random_state=random_state + run_id,
+                n_jobs=tuning_n_jobs,
+                logger=logger,
+            )
+        )
+
+        # Extract selected feature indices and names
+        selected_indices, selected_names = get_final_selected_features(
+            pipeline=best_static_ensemble_model,
+            feature_names=transformed_feature_names,
+        )
+
+        # Collect resubstitution and generalization metrics
+        collect_fold_reports(
+            resubstitution_rows=resubstitution_rows,
+            generalization_rows=generalization_rows,
+            experiment_name=experiment_name,
+            iteration=iteration_idx + 1,
+            fold=fold_idx + 1,
+            model_name=static_ensemble_model_name,
             resubstitution_metrics=resubstitution_metrics,
             test_metrics=test_metrics,
             fold_size_train=len(X_train),
