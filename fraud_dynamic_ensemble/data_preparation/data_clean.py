@@ -14,35 +14,37 @@ def remove_duplicates(
     ignore_index: bool = False,
 ) -> pd.DataFrame | None:
     """
-    Drop duplicate rows (thin wrapper around ``pandas.DataFrame.drop_duplicates``).
+    Remove duplicate rows from a DataFrame.
 
-    This utility mirrors pandas' behavior while branching internally to pass
-    literal ``True``/``False`` for the ``inplace`` argument. That avoids
-    strict type-stub warnings in some tooling without changing pandas'
-    runtime behavior.
+    This is a thin wrapper around :meth:`pandas.DataFrame.drop_duplicates` that
+    branches on ``inplace`` to pass literal ``True``/``False``. This pattern is
+    intended to avoid strict type-stub warnings in some tooling without changing
+    pandas runtime behavior.
 
     Parameters
     ----------
     df : pandas.DataFrame
         Input DataFrame.
     subset : hashable or sequence of hashable, optional
-        Columns to consider when identifying duplicates. If ``None``, use all columns.
+        Column label(s) to consider when identifying duplicates. If ``None``,
+        all columns are used.
     keep : {'first', 'last', False}, default 'first'
-        Which duplicates to keep:
-        - ``'first'`` keeps the first occurrence and drops subsequent ones.
-        - ``'last'`` keeps the last occurrence and drops previous ones.
-        - ``False`` drops **all** duplicates (keeps none).
+        Which duplicates to keep.
+        If ``'first'``, keep the first occurrence.
+        If ``'last'``, keep the last occurrence.
+        If ``False``, drop all duplicates (keep none).
     inplace : bool, default False
         If ``True``, modify ``df`` in place and return ``None``.
         If ``False``, return a new DataFrame and leave ``df`` unchanged.
     ignore_index : bool, default False
-        If ``True``, the result's index is reset to ``RangeIndex(0, …, n-1)``.
-        When ``inplace=True``, this resets the index of ``df`` itself.
+        If ``True``, reset the index to ``RangeIndex(0, ..., n-1)`` in the
+        returned object. When ``inplace=True``, this resets the index of ``df``
+        itself.
 
     Returns
     -------
     pandas.DataFrame or None
-        A new DataFrame with duplicates removed if ``inplace=False``; otherwise ``None``.
+        Deduplicated DataFrame if ``inplace=False``; otherwise ``None``.
 
     Raises
     ------
@@ -51,37 +53,22 @@ def remove_duplicates(
 
     Notes
     -----
-    - This function delegates to ``DataFrame.drop_duplicates``; see pandas docs
-      for additional details and performance considerations.
-    - Branching with literal booleans (``inplace=True/False``) is intentional to
-      satisfy strict pandas type stubs and silence static checker warnings.
+    This function delegates to :meth:`pandas.DataFrame.drop_duplicates`. The
+    explicit branching on ``inplace`` is intentional to satisfy strict pandas
+    type stubs.
 
     Examples
     --------
-    Basic usage, return a new DataFrame:
-
     >>> import pandas as pd
-    >>> df = pd.DataFrame({'A': [1, 1, 2], 'B': ['x', 'x', 'y']})
-    >>> out = remove_duplicates(df)
-    >>> len(out)
+    >>> df = pd.DataFrame({"A": [1, 1, 2], "B": ["x", "x", "y"]})
+    >>> remove_duplicates(df).shape[0]
     2
-
-    Consider only a subset of columns:
-
-    >>> remove_duplicates(df, subset='A').shape[0]
-    2
-
-    Drop all duplicates (keep none):
-
-    >>> remove_duplicates(df, keep=False).shape[0]
-    2
-
-    In place with index reset:
 
     >>> _ = remove_duplicates(df, inplace=True, ignore_index=True)
-    >>> df.index[0] == 0
-    True
+    >>> df.index[0]
+    0
     """
+
     if inplace:
         df.drop_duplicates(subset=subset, keep=keep, inplace=True, ignore_index=ignore_index)
         return None

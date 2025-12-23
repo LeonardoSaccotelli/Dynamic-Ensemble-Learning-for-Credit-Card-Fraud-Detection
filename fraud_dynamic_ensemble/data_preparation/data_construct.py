@@ -14,39 +14,42 @@ def transform_log1p(
     drop_original: bool = True,
 ) -> pd.DataFrame:
     """
-    Apply a row-wise ``log1p`` transform (``log(x + 1)``) to one or more columns.
+    Apply a ``log1p`` transform to one or more DataFrame columns.
 
-    This helper uses a scikit-learn ``FunctionTransformer`` (``np.log1p``) and writes
-    results to new columns named ``<col>_log1p``. Optionally drops the original columns.
+    This function computes ``log(x + 1)`` (via a scikit-learn
+    :class:`sklearn.preprocessing.FunctionTransformer`) for each selected column
+    and appends the result as a new column named ``<col>_log1p``. Optionally, the
+    original source columns are dropped.
 
     Parameters
     ----------
     df : pandas.DataFrame
-        Input DataFrame. A copy is returned; the original is not modified.
+        Input DataFrame. The original is not modified; a copy is returned.
     cols : str or list of str
         Column name(s) to transform.
     drop_original : bool, default True
-        If True, drop the source columns after creating the ``*_log1p`` columns.
+        If ``True``, drop the source columns after creating the ``*_log1p`` columns.
 
     Returns
     -------
     pandas.DataFrame
-        Copy of ``df`` with transformed columns appended (and optionally source
-        columns removed).
+        Copy of ``df`` with the transformed ``*_log1p`` columns appended and,
+        if requested, the original columns removed.
 
     Raises
     ------
     KeyError
         If any requested column is not present in ``df``.
     ValueError
-        If any selected column contains values strictly less than ``-1``
-        (invalid for ``log1p``).
+        If any selected column contains finite values strictly less than ``-1``
+        (invalid domain for ``log1p``).
 
     Notes
     -----
-    - Purely row-wise transform → **no data leakage**.
-    - If a column has non-numeric data, underlying casting/transform will error.
-    - ``np.log1p`` is defined for ``x >= -1``.
+    - This is a purely row-wise transform and does not introduce data leakage.
+    - ``np.log1p`` is defined for inputs ``x >= -1``; values below ``-1`` are rejected.
+    - Non-numeric column values must be castable to ``float``; otherwise the
+      conversion will raise.
 
     Examples
     --------
@@ -88,30 +91,30 @@ def transform_sin_cos(
     drop_original: bool = True,
 ) -> pd.DataFrame:
     """
-    Encode cyclical features with sine and cosine components.
+    Encode cyclical features using sine and cosine components.
 
-    For each column in ``cols``, compute:
-    ``sin = sin(2π * x / period)`` and ``cos = cos(2π * x / period)``,
-    creating new columns ``<col>_sin`` and ``<col>_cos``. By default, the original
+    For each column in ``cols``, this function computes the cyclical embedding
+    ``sin(2π * x / period)`` and ``cos(2π * x / period)``, writing results to new
+    columns named ``<col>_sin`` and ``<col>_cos``. Optionally, the original source
     columns are dropped.
 
     Parameters
     ----------
     df : pandas.DataFrame
-        Input DataFrame. A defensive copy is created; the original is not modified.
+        Input DataFrame. The original is not modified; a copy is returned.
     cols : str or list of str
-        Column name(s) to transform (numeric, cyclical values).
+        Column name(s) to transform (numeric cyclical values).
     period : int or float
-        The periodicity of the variable (e.g., ``24`` for hours-of-day,
-        ``86400`` for seconds-in-day). Units must match those of ``cols``.
+        Periodicity of the variable (e.g., ``24`` for hours-of-day, ``86400`` for
+        seconds-in-day). Units must match those of ``cols``. Must be strictly positive.
     drop_original : bool, default True
-        If True, drop the source columns after creating the sine/cosine columns.
+        If ``True``, drop the source columns after creating the sine/cosine columns.
 
     Returns
     -------
     pandas.DataFrame
-        A copy of ``df`` with ``*_sin`` and ``*_cos`` columns appended (and
-        optionally with the source columns removed).
+        Copy of ``df`` with ``*_sin`` and ``*_cos`` columns appended and, if
+        requested, the original columns removed.
 
     Raises
     ------
@@ -119,28 +122,26 @@ def transform_sin_cos(
         If any requested column is not present in ``df``.
     ValueError
         If ``period`` is not strictly positive.
-    TypeError
-        Propagated if column data cannot be coerced to numeric for the trig functions.
 
     Notes
     -----
-    - Purely row-wise transform (no learned statistics) → **no leakage**.
+    - This is a purely row-wise transform and does not introduce data leakage.
     - Ensure ``period`` matches the unit of the source feature (e.g., seconds vs hours).
-    - Internally, a 2D view (``df[[col]]``) is passed to scikit-learn's
-      ``FunctionTransformer`` and assigned back to a single new column.
+    - Internally, a 2D view (``df[[col]]``) is passed to scikit-learn
+      :class:`sklearn.preprocessing.FunctionTransformer` and assigned back to a
+      single new column.
 
     Examples
     --------
-    Keep original ``Time`` (seconds in day):
     >>> out = transform_sin_cos(df, "Time", period=86400, drop_original=False)
     >>> {"Time", "Time_sin", "Time_cos"}.issubset(out.columns)
     True
 
-    Multiple columns, drop originals:
     >>> out = transform_sin_cos(df, ["t1", "t2"], period=24)
     >>> {"t1_sin", "t1_cos", "t2_sin", "t2_cos"}.issubset(out.columns)
     True
     """
+
     if period <= 0:
         raise ValueError("'period' must be a strictly positive number.")
 
@@ -181,56 +182,51 @@ def get_standard_scaler(
     with_std: bool = True,
 ) -> ColumnTransformer:
     """
-    Create a ColumnTransformer that applies StandardScaler to selected columns.
+    Build a ColumnTransformer that standardizes a selected set of columns.
 
-    This is useful when you want to scale only a subset of features—especially
-    **by positional index** after steps like FeatureUnion, where column names
-    may be lost and the data is a NumPy array.
+    This helper creates a :class:`sklearn.compose.ColumnTransformer` that applies
+    :class:`sklearn.preprocessing.StandardScaler` to the specified columns while
+    either passing through or dropping all remaining columns. It is particularly
+    useful when selecting columns by positional index after pipeline steps that
+    output NumPy arrays (e.g., unions or feature selection).
 
     Parameters
     ----------
-    columns : sequence of int or str
-        Columns to scale. Use **indices** when the input to the transformer is
-        a NumPy array; use **names** when it is a pandas DataFrame.
-    remainder : {"passthrough", "drop"}, default "passthrough"
-        What to do with columns not listed in ``columns``:
-        - "passthrough": keep them unchanged,
-        - "drop": remove them.
+    columns : sequence of int or sequence of str
+        Columns to standardize. Use integer indices when the transformer input is a
+        NumPy array; use string names when the input is a pandas DataFrame.
+    remainder : {'passthrough', 'drop'}, default 'passthrough'
+        Strategy for columns not listed in ``columns``. If ``'passthrough'``, keep
+        them unchanged. If ``'drop'``, remove them.
     with_mean : bool, default True
-        Center the data before scaling (StandardScaler parameter).
-        Set to False if using sparse inputs.
+        Whether to center the data before scaling (StandardScaler parameter).
+        Set to ``False`` when working with sparse inputs.
     with_std : bool, default True
-        Scale to unit variance (StandardScaler parameter).
+        Whether to scale features to unit variance (StandardScaler parameter).
 
     Returns
     -------
     sklearn.compose.ColumnTransformer
-        A transformer that applies standardization to the specified columns and
-        passes/drops the remainder according to ``remainder``.
+        ColumnTransformer applying StandardScaler to ``columns`` and handling the
+        remainder according to ``remainder``.
+
+    Raises
+    ------
+    ValueError
+        If ``columns`` is empty.
 
     Notes
     -----
-    - When your upstream pipeline returns a NumPy array (e.g., after feature
-      selection or unions), prefer **index-based** selection.
-    - If you later switch to chi-square tests, remember that ``chi2`` requires
-      **non-negative** features, so StandardScaler would be inappropriate there.
+    - When upstream steps return a NumPy array, prefer index-based selection.
+    - Some feature selection methods (e.g., ``chi2``) require non-negative features;
+      in those cases StandardScaler may be inappropriate.
 
     Examples
     --------
-    Scale columns by **index** (NumPy input):
     >>> ct = get_standard_scaler(columns=[0, 1, 3], remainder="passthrough")
-
-    Scale columns by **name** (DataFrame input):
     >>> ct = get_standard_scaler(columns=["Amount_log1p", "V1"], remainder="passthrough")
-
-    Use inside a Pipeline:
-    >>> from sklearn.pipeline import Pipeline
-    >>> pipe = Pipeline([
-    ...     ("scale_selected", ct),
-    ...     # ("select", get_feature_selection(...)),  # optional
-    ...     # ("clf", SomeEstimator(...)),
-    ... ])
     """
+
     if not columns:
         raise ValueError("`columns` must be a non-empty sequence of indices or names.")
 
