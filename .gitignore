@@ -203,5 +203,6 @@ models_to_pass
 predict.py
 plots.py
 
+docs/
 docs/docs/
 references/
