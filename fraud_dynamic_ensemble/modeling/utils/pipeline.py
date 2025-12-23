@@ -20,71 +20,59 @@ def build_model_pipeline(
     resampling_params: Optional[Mapping[str, Any]],
 ) -> ImbPipeline:
     """
-    Build a leakage-safe imbalanced-learn pipeline for supervised classification.
+    Build a leakage-safe imbalanced-learn pipeline for binary classification.
 
-    The returned pipeline enforces a consistent order of operations for each CV split:
+    The resulting :class:`imblearn.pipeline.Pipeline` enforces a consistent
+    train-time ordering for each CV split:
+    1) standardize selected numeric features,
+    2) apply filter-based feature selection (SelectKBest),
+    3) optionally resample the training fold to address imbalance, and
+    4) fit the final estimator.
 
-    1. **Preprocessing**: scale selected numerical columns via a
-       :class:`sklearn.compose.ColumnTransformer` wrapping
-       :class:`sklearn.preprocessing.StandardScaler`.
-    2. **Feature selection**: apply :class:`sklearn.feature_selection.SelectKBest` to retain
-       ``fs_k_best_to_keep`` features (or all features when ``k="all"``).
-    3. **Resampling (optional, train-time only)**: apply an imbalanced-learn sampler during
-       ``fit`` to address class imbalance. If resampling is disabled, the step is configured
-       as passthrough.
-    4. **Classifier**: fit/predict using the provided final estimator.
-
-    This structure is intended for cross-validation and hyperparameter tuning so that
-    preprocessing, feature selection, and resampling are fit **only** on the training portion
-    of each split, preventing data leakage.
+    This structure is intended for cross-validation and hyperparameter tuning so
+    that scaling, feature selection, and resampling are fit/applied only on the
+    training portion of each split, reducing leakage risk.
 
     Parameters
     ----------
     estimator : sklearn.base.BaseEstimator
-        Final classifier appended as the last step of the pipeline (named ``"classifier"``).
-        Must implement ``fit`` and ``predict`` (and optionally ``predict_proba`` if required
-        by downstream evaluation).
-    numerical_features_to_standardize : Sequence[Union[int, str]]
-        Feature indices or column names to scale with :class:`~sklearn.preprocessing.StandardScaler`
-        inside the preprocessing step. The underlying preprocessing factory
-        (:func:`get_standard_scaler`) must support the provided type (indices for NumPy arrays,
-        column names for pandas DataFrames).
-    fs_k_best_to_keep : Union[int, str]
-        Default value for ``k`` in :class:`~sklearn.feature_selection.SelectKBest`.
-        Use ``"all"`` to keep all features. This is the pipeline construction default; it can
-        be overridden during hyperparameter tuning by searching over
-        ``"feature_selection_filter__k"``.
-    resampling_method : Optional[str]
-        Canonical name of the resampling strategy (e.g., ``"SMOTE"``, ``"RandomUnderSampler"``,
-        ``"ADASYN"``, ``"SMOTEENN"``). If ``None`` or case-insensitive ``"none"``, resampling is
-        disabled and the resampling step is configured as passthrough.
-    resampling_params : Optional[Mapping[str, Any]]
+        Final classifier used as the last pipeline step (named ``"classifier"``).
+        Must implement ``fit`` and ``predict`` (and optionally ``predict_proba`` if
+        required by downstream evaluation).
+    numerical_features_to_standardize : Sequence[int or str]
+        Feature indices or column names to standardize in the preprocessing step.
+        Indices are appropriate for NumPy-array inputs; names are appropriate for
+        pandas DataFrame inputs.
+    fs_k_best_to_keep : int or {'all'}
+        Default number of top features to keep in SelectKBest. Use ``'all'`` to
+        keep all features. This default can be overridden in tuning via
+        ``feature_selection_filter__k``.
+    resampling_method : str or None
+        Canonical resampling strategy name (e.g., ``'SMOTE'``, ``'RandomUnderSampler'``,
+        ``'SMOTEENN'``). If ``None`` or ``'none'``, resampling is disabled and the
+        resampling step is configured as passthrough.
+    resampling_params : Mapping[str, Any] or None
         Optional keyword arguments forwarded to the sampler constructor via
-        :func:`get_resampling_pipeline` (e.g., ``sampling_strategy``, ``random_state``,
-        ``k_neighbors``). If ``None``, no extra keyword arguments are provided.
+        :func:`get_resampling_pipeline`. If ``None``, no additional parameters are
+        provided.
 
     Returns
     -------
     imblearn.pipeline.Pipeline
-        An :class:`imblearn.pipeline.Pipeline` (``ImbPipeline``) with the following step names:
-
-        - ``("preprocessor", preprocessor)``
-        - ``("feature_selection_filter", fs_filter)``
-        - ``("resampling", resampling)``
-        - ``("classifier", estimator)``
+        Pipeline with the following steps:
+        - ``('preprocessor', ColumnTransformer)``
+        - ``('feature_selection_filter', SelectKBest)``
+        - ``('resampling', BaseSampler or 'passthrough')``
+        - ``('classifier', estimator)``
 
     Notes
     -----
-    - **Leakage safety:** when used within cross-validation, all data-dependent steps
-      (scaling, feature selection, and resampling) are fitted only on the training split.
-    - **Train-time only resampling:** imbalanced-learn resampling occurs during ``fit`` and is
-      not applied during ``predict`` / inference.
-    - **Tuning hooks:** the step names are chosen to support hyperparameter tuning using
-      scikit-learn’s double-underscore convention (e.g., ``"classifier__C"``,
-      ``"feature_selection_filter__k"``, sampler-specific parameters if exposed).
-    - **Input types:** the pipeline can be used with NumPy arrays or pandas DataFrames, as
-      long as the preprocessing utilities support the chosen
-      ``numerical_features_to_standardize`` representation.
+    - Resampling is applied only during ``fit`` (train-time) and not during
+      ``predict``.
+    - Step names are chosen to support scikit-learn's parameter routing for tuning
+      (e.g., ``classifier__C``, ``feature_selection_filter__k``).
+    - The pipeline can operate on either pandas DataFrames or NumPy arrays, provided
+      the selected column representation matches the input type.
 
     Examples
     --------
@@ -136,57 +124,52 @@ def build_standardization_and_feature_order(
     numerical_features_to_standardize: Sequence[str],
 ) -> Tuple[List[int], List[str], List[str]]:
     """
-    Prepare indices and post-preprocessing feature order for standardization.
+    Derive standardization indices and post-preprocessing feature order.
 
-    This helper derives:
-    1) the integer indices of the columns to standardize, and
-    2) the feature-name order *after* a preprocessing step implemented as a
-       :class:`sklearn.compose.ColumnTransformer` that applies a scaler to a subset of
-       columns and uses ``remainder="passthrough"`` for all others.
+    This helper computes (1) the integer indices of columns to be standardized and
+    (2) the expected feature-name order after a preprocessing step implemented as a
+    :class:`sklearn.compose.ColumnTransformer` that applies a scaler to the selected
+    columns and uses ``remainder='passthrough'`` for all others.
 
-    Under these assumptions, the post-preprocessing order seen by downstream steps is:
-
-    ``[scaled_features (in the requested order),
-      all_other_features (in original column order)]``.
+    Under these assumptions, downstream steps see features ordered as:
+    ``[scaled_features (in requested order), remaining_features (in original order)]``.
 
     Parameters
     ----------
     X : pandas.DataFrame
-        Input feature dataframe **before** preprocessing. Column order is assumed to be the
-        original feature order.
+        Input feature DataFrame prior to preprocessing. Column order is treated as
+        the canonical "original" feature order.
     numerical_features_to_standardize : Sequence[str]
-        Names of the features to be standardized by the scaler inside the
-        :class:`~sklearn.compose.ColumnTransformer`. Each name must be present in
-        ``X.columns``. The order of this sequence determines the order of the scaled block
-        in the transformed feature list.
+        Names of features to be standardized. Each name must exist in ``X.columns``.
+        The order of this sequence determines the order of the scaled block in the
+        transformed feature list.
 
     Returns
     -------
-    idx_num_features_to_standardize : List[int]
-        Integer indices of the features to standardize, aligned with the original column
-        order of ``X``. These indices are suitable to be passed to a ColumnTransformer that
-        selects columns by index.
-    original_feature_names : List[str]
-        Original feature names in the same order as ``X.columns``.
-    transformed_feature_names : List[str]
-        Feature names in the post-preprocessing order, as seen by downstream steps (e.g.,
-        feature selectors). With a single scaler transformer applied to the selected indices
-        and ``remainder="passthrough"``, this order is:
-        ``scaled_features`` first (in the order provided by ``numerical_features_to_standardize``),
-        followed by all remaining columns in their original order.
+    idx_num_features_to_standardize : list of int
+        Integer indices of standardized features with respect to ``X.columns``. These
+        indices are suitable for index-based selection in a ColumnTransformer.
+    original_feature_names : list of str
+        Feature names in the original order (``X.columns``).
+    transformed_feature_names : list of str
+        Feature names in the expected post-preprocessing order:
+        standardized features first (in the order given by
+        ``numerical_features_to_standardize``), followed by the remaining features
+        in their original order.
 
     Raises
     ------
     ValueError
-        If any feature requested for standardization is not present in ``X.columns``.
+        If any feature listed in ``numerical_features_to_standardize`` is not present
+        in ``X.columns``.
 
     Notes
     -----
-    - This function assumes the standardization transformer does **not** change the number of
-      features (e.g., :class:`~sklearn.preprocessing.StandardScaler`).
-    - If preprocessing becomes more complex (multiple transformers, one-hot encoding, dropped
-      columns, etc.), prefer using ``preprocessor.get_feature_names_out()`` rather than
-      reconstructing the order manually.
+    - This function assumes the scaler does not change feature dimensionality (e.g.,
+      StandardScaler).
+    - If preprocessing becomes more complex (multiple transformers, one-hot encoding,
+      dropped columns), prefer ``preprocessor.get_feature_names_out()`` over manual
+      reconstruction.
 
     Examples
     --------
@@ -240,56 +223,54 @@ def get_final_selected_features(
     feature_names: Sequence[str],
 ) -> Tuple[List[int], List[str]]:
     """
-    Extract selected feature indices and names from a fitted ``SelectKBest`` step.
+    Extract selected feature indices and names from a fitted SelectKBest step.
 
-    The pipeline is expected to include a fitted selector step named
-    ``"feature_selection_filter"`` (typically a ``SelectKBest`` instance).
-    This utility reads the selector boolean mask via ``get_support()``,
-    converts it into global indices (relative to the selector input),
-    and returns both indices and corresponding feature names.
+    The pipeline is expected to contain a fitted step named
+    ``"feature_selection_filter"`` implementing ``get_support()`` (typically a
+    :class:`sklearn.feature_selection.SelectKBest`). This helper reads the boolean
+    support mask, converts it into integer indices, and maps those indices to the
+    provided feature names.
 
     Parameters
     ----------
     pipeline : imblearn.pipeline.Pipeline or sklearn.pipeline.Pipeline
-        A **fitted** pipeline exposing a step named ``"feature_selection_filter"``
-        implementing ``get_support()`` (e.g., ``SelectKBest``).
+        Fitted pipeline exposing a step named ``"feature_selection_filter"`` that
+        implements ``get_support()``.
     feature_names : Sequence[str]
-        Feature names aligned with the input of ``"feature_selection_filter"``.
-        If your pipeline contains a preprocessor (e.g., ``ColumnTransformer``),
-        pass the names after preprocessing (e.g.,
-        ``pipeline.named_steps['preprocessor'].get_feature_names_out()``) so the
+        Feature names aligned with the input to ``"feature_selection_filter"``.
+        If the pipeline includes preprocessing that changes feature order, pass
+        names after preprocessing (e.g., from
+        ``pipeline.named_steps["preprocessor"].get_feature_names_out()``) so the
         dimensionality matches the selector input.
 
     Returns
     -------
     selected_features_indices : list of int
-        Global indices kept by the ``"feature_selection_filter"`` step.
+        Indices of selected features relative to the selector input.
     selected_features_names : list of str
-        Names corresponding to ``selected_features_indices``, taken from
-        ``feature_names``.
+        Names corresponding to ``selected_features_indices``.
 
     Raises
     ------
     KeyError
-        If the expected step (``"feature_selection_filter"``) is not present.
+        If the pipeline does not contain a step named ``"feature_selection_filter"``.
     IndexError
-        If any returned index exceeds the bounds of ``feature_names`` (typically
-        due to misalignment between the selector input and the provided names).
+        If selected indices are out of bounds for ``feature_names`` (typically due to
+        misalignment between the selector input and the provided feature name list).
 
     Notes
     -----
-    - The pipeline must be **fitted**; otherwise ``get_support()`` will fail.
-    - This utility assumes a *single* filter selector. If you later reintroduce
-      multiple selectors (sequential or unions), you will need a different
-      inspection routine.
+    - The pipeline must be fitted; otherwise ``get_support()`` will fail.
+    - This helper assumes a single filter selector step. If you introduce multiple
+      selection stages, you will need a different inspection routine.
 
     Examples
     --------
     >>> pre = pipeline.named_steps["preprocessor"]
     >>> names = pre.get_feature_names_out()
     >>> idx, sel_names = get_final_selected_features(pipeline, names)
-    >>> idx[:5], sel_names[:5]
-    ([0, 5, 12, 19, 27], ['V1', 'V4', 'V10', 'Amount_log1p', 'Time_sin'])
+    >>> (idx[:3], sel_names[:3])
+    ([0, 5, 12], ['V1', 'V4', 'V10'])
     """
 
     # Access the specific steps by the names defined in your ImbPipeline
