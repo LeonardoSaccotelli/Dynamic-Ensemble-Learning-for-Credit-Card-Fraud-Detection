@@ -199,3 +199,6 @@ models_to_pass
 *.docx
 
 *.drawio
+
+predict.py
+plots.py
