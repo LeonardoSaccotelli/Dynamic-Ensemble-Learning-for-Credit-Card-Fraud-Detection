@@ -705,7 +705,7 @@ def get_static_ensemble_model_and_search_space(
     if ensemble_type == "VotingClassifier":
         # Soft voting returns the class label as argmax of the sum of predicted probabilities.
         # This requires 'probability=True' in SVC (handled in base factory).
-        model = VotingClassifier(estimators=estimators, voting="soft", n_jobs=1)
+        model = VotingClassifier(estimators=estimators, voting="soft", n_jobs=len(model_pool))
 
     elif ensemble_type == "StackingClassifier":
         # Define the meta-learner
@@ -719,7 +719,7 @@ def get_static_ensemble_model_and_search_space(
         model = StackingClassifier(
             estimators=estimators,
             final_estimator=final_estimator,
-            n_jobs=1,
+            n_jobs=len(model_pool),
             # 'passthrough': False -> Train meta-model only on predictions of base models
             passthrough=False,
             cv=5,  # Internal CV for training the meta-model
