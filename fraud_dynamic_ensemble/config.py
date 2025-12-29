@@ -75,8 +75,8 @@ USED_UNDERSAMPLING_NAME = "ClusterCentroids"
 # undersampling parameters for ClusterCentroids
 RESAMPLING_METHOD = "ClusterCentroids"
 RESAMPLING_PARAMS = {
-    "random_state":RANDOM_STATE,
-    "sampling_strategy":0.10,
+    "random_state": RANDOM_STATE,
+    "sampling_strategy": 0.10,
 }
 
 # outer evaluation setting: RepeatedStratifiedKFold (10 x 10)
