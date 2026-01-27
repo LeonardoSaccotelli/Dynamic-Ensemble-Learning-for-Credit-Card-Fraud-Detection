@@ -13,10 +13,7 @@ import seaborn as sns
 
 
 def plot_learning_curves(
-    df: pd.DataFrame,
-    metric_name: str,
-    model_name: str,
-    save_path: Path
+    df: pd.DataFrame, metric_name: str, model_name: str, save_path: Path
 ) -> None:
     """
     Plot train vs. generalization trajectories across iterations for a single metric.
@@ -153,10 +150,7 @@ def plot_learning_curves(
 
 
 def analyze_generalization_gap(
-    df: pd.DataFrame,
-    metrics_list: Sequence[str],
-    model_name: str,
-    save_path: Path
+    df: pd.DataFrame, metrics_list: Sequence[str], model_name: str, save_path: Path
 ) -> None:
     """
     Calculate and visualize the generalization gap (train minus test) for a given metric set.
@@ -238,11 +232,7 @@ def analyze_generalization_gap(
 
     # 1. Pivot Data to align Train/Test for calculating the difference
     # We create a table where we can subtract 'generalization' from 'resubstitution' directly
-    pivot_df = df.pivot_table(
-        index=["iteration", "fold"],
-        columns="split",
-        values=metrics_list
-    )
+    pivot_df = df.pivot_table(index=["iteration", "fold"], columns="split", values=metrics_list)
 
     # 2. Calculate the Gap
     # Gap = Resubstitution (Train) - Generalization (Test)
@@ -265,8 +255,8 @@ def analyze_generalization_gap(
         color="white",
         linecolor="#333333",
         width=0.6,
-        fliersize=0,        # Hide outliers here (we show them in the strip plot)
-        linewidth=1.5
+        fliersize=0,  # Hide outliers here (we show them in the strip plot)
+        linewidth=1.5,
     )
 
     # B. Strip Plot for Density & Outliers (Blue dots)
@@ -275,18 +265,29 @@ def analyze_generalization_gap(
         x="Metric",
         y="Generalization Gap",
         color="#1f77b4",
-        alpha=0.4,          # Transparency allows seeing overlapping points
-        jitter=0.25,        # Spreads dots horizontally
+        alpha=0.4,  # Transparency allows seeing overlapping points
+        jitter=0.25,  # Spreads dots horizontally
         size=4,
-        ax=ax
+        ax=ax,
     )
 
     # C. Reference Line (Zero Gap)
-    plt.axhline(0, color="#d62728", linestyle="--", linewidth=2, alpha=0.8, label="Ideal Generalization (Gap=0)")
+    plt.axhline(
+        0,
+        color="#d62728",
+        linestyle="--",
+        linewidth=2,
+        alpha=0.8,
+        label="Ideal Generalization (Gap=0)",
+    )
 
     # 5. Styling
-    plt.title(f"Generalization Gap Analysis: {model_name}\n(Positive Values = Overfitting)",
-              fontsize=16, fontweight="bold", pad=20)
+    plt.title(
+        f"Generalization Gap Analysis: {model_name}\n(Positive Values = Overfitting)",
+        fontsize=16,
+        fontweight="bold",
+        pad=20,
+    )
     plt.ylabel("Performance Drop (Train Score - Test Score)", fontweight="bold")
     plt.xlabel("Metric", fontweight="bold")
     plt.grid(True, axis="y", alpha=0.5, linestyle="--")
