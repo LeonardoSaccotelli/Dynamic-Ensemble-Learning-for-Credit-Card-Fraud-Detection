@@ -12,6 +12,135 @@ import scikit_posthocs as sp
 import seaborn as sns
 
 
+def plot_learning_curves(df: pd.DataFrame, metric_name: str, save_path: Path) -> None:
+    """
+    Plot train vs. generalization trajectories across iterations for a single metric.
+
+    The function aggregates the provided results by ``iteration`` and ``split`` to compute
+    the mean and standard deviation of ``metric_name`` across folds. It then plots two
+    trajectories:
+    - ``"resubstitution"`` (train) and
+    - ``"generalization"`` (test),
+    with shaded bands representing ±1 standard deviation. The figure is saved under
+    ``save_path`` and also displayed via ``plt.show()``.
+
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        Input table containing at minimum the columns: ``"iteration"``, ``"split"``, and
+        the metric column specified by ``metric_name``. The DataFrame is assumed to be
+        already filtered to the subset you want to analyze (e.g., a single model).
+    metric_name : str
+        Name of the metric column to aggregate and plot.
+    save_path : pathlib.Path
+        Output directory used to build the output figure path.
+
+    Returns
+    -------
+    None
+        Side effects only: prints progress messages, renders the plot, and writes a PNG file.
+
+    Raises
+    ------
+    KeyError
+        If ``metric_name`` or mandatory columns (e.g., ``"iteration"``, ``"split"``) are
+        missing from ``df``.
+    PermissionError
+        If the output image cannot be written due to insufficient permissions.
+    OSError
+        If an OS-related error occurs while saving the figure.
+
+    Notes
+    -----
+    - Expected ``split`` values are ``"resubstitution"`` and ``"generalization"``.
+    - The y-axis is fixed to ``[0, 1.05]`` in the current implementation, so this plot is
+      appropriate for metrics naturally bounded in ``[0, 1]`` (e.g., ROC-AUC, F1, AP).
+      For metrics like MCC in ``[-1, 1]``, the visualization will be clipped.
+    - The current implementation builds ``fig_filename`` as ``save_path / <filename>``
+      and then calls ``plt.savefig(save_path / fig_filename, ...)``, which effectively
+      duplicates ``save_path`` in the output path. This is an implementation detail of
+      the existing code; the docstring documents it without modifying the code.
+
+    Examples
+    --------
+    >>> import pandas as pd
+    >>> from pathlib import Path
+    >>> df = pd.DataFrame(
+    ...     {
+    ...         "iteration": [1, 1, 2, 2],
+    ...         "split": ["resubstitution", "generalization", "resubstitution", "generalization"],
+    ...         "roc_auc": [0.95, 0.90, 0.96, 0.91],
+    ...     }
+    ... )
+    >>> plot_learning_curves(df=df, metric_name="roc_auc", save_path=Path("."))
+    >>> True
+    True
+    """
+    print(f"\n{'=' * 80}\nLEARNING CURVES ANALYSIS: {metric_name.upper()}\n{'=' * 80}")
+
+    # 1. Aggregation: Calculate Mean and Std per Iteration & Split
+    # Collapse the 10 folds into summary stats
+    stats_df = df.groupby(["iteration", "split"])[metric_name].agg(["mean", "std"]).reset_index()
+
+    # 2. Setup Plot
+    plt.figure(figsize=(12, 6))
+    sns.set_style("whitegrid")
+
+    # Define colors for splits
+    colors = {
+        "resubstitution": "#d62728",
+        "generalization": "#1f77b4",
+    }  # Red for Train, Blue for Test
+    labels = {
+        "resubstitution": "Train (Resubstitution)",
+        "generalization": "Test (Generalization)",
+    }
+
+    # 3. Plot Lines and Shaded Areas
+    for split in ["resubstitution", "generalization"]:
+        subset = stats_df[stats_df["split"] == split]
+
+        # Plot Mean Line
+        plt.plot(
+            subset["iteration"],
+            subset["mean"],
+            marker="o",
+            label=labels[split],
+            color=colors[split],
+            linewidth=2,
+        )
+
+        # Plot Standard Deviation Shade
+        plt.fill_between(
+            subset["iteration"],
+            subset["mean"] - subset["std"],
+            subset["mean"] + subset["std"],
+            color=colors[split],
+            alpha=0.15,  # Light transparency
+        )
+
+    # 4. Formatting
+    plt.ylim([0, 1.05])
+    plt.title(
+        f"Learning Stability Analysis: {metric_name.upper()}",
+        fontsize=16,
+        fontweight="bold",
+        pad=15,
+    )
+    plt.xlabel("Iteration", fontweight="bold")
+    plt.ylabel(f"{metric_name.upper()}\n(Mean ± Std Dev)", fontweight="bold")
+    plt.xticks(range(1, 11))  # Ensure integer ticks for iterations 1-10
+    plt.yticks(ticks=np.arange(0, 1.1, 0.1))
+    plt.legend(loc="best", frameon=True)
+    plt.grid(True, linestyle="--", alpha=0.6)
+
+    # 5. Save
+    fig_filename = save_path / f"learning_curves_{metric_name}.png"
+    plt.savefig(save_path / fig_filename, dpi=300, bbox_inches="tight")
+    plt.show()
+    plt.close()
+
+
 def plot_model_distribution(
     df: pd.DataFrame, metric_name: str, save_path: Path, split_name: str = "generalization"
 ) -> Optional[pd.DataFrame]:
