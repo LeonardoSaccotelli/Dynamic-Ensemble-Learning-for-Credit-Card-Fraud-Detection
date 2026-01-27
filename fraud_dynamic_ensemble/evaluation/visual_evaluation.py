@@ -21,22 +21,25 @@ def plot_learning_curves(
     """
     Plot train vs. generalization trajectories across iterations for a single metric.
 
-    The function aggregates the provided results by ``iteration`` and ``split`` to compute
+    The function aggregates the input results by ``iteration`` and ``split`` to compute
     the mean and standard deviation of ``metric_name`` across folds. It then plots two
     trajectories:
     - ``"resubstitution"`` (train) and
     - ``"generalization"`` (test),
-    with shaded bands representing ±1 standard deviation. The figure is saved under
-    ``save_path`` and also displayed via ``plt.show()``.
+    with shaded bands representing ±1 standard deviation. The figure is saved and also
+    displayed via ``plt.show()``. The ``model_name`` parameter is used only for labeling
+    the plot title (the function does not filter ``df`` by model internally).
 
     Parameters
     ----------
     df : pandas.DataFrame
         Input table containing at minimum the columns: ``"iteration"``, ``"split"``, and
-        the metric column specified by ``metric_name``. The DataFrame is assumed to be
-        already filtered to the subset you want to analyze (e.g., a single model).
+        the metric column specified by ``metric_name``. If you want curves for a single
+        model, pass a DataFrame already filtered to that model.
     metric_name : str
         Name of the metric column to aggregate and plot.
+    model_name : str
+        Model identifier used for figure labeling (title). No filtering is performed.
     save_path : pathlib.Path
         Output directory used to build the output figure path.
 
@@ -72,15 +75,18 @@ def plot_learning_curves(
     >>> from pathlib import Path
     >>> df = pd.DataFrame(
     ...     {
+    ...         "model": ["A", "A", "A", "A"],
     ...         "iteration": [1, 1, 2, 2],
+    ...         "fold": [1, 2, 1, 2],
     ...         "split": ["resubstitution", "generalization", "resubstitution", "generalization"],
     ...         "roc_auc": [0.95, 0.90, 0.96, 0.91],
     ...     }
     ... )
-    >>> plot_learning_curves(df=df, metric_name="roc_auc", save_path=Path("."))
+    >>> plot_learning_curves(df=df, metric_name="roc_auc", model_name="A", save_path=Path("."))
     >>> True
     True
     """
+
     print(f"\n{'=' * 80}\nLEARNING CURVES ANALYSIS: {metric_name.upper()}\n{'=' * 80}")
 
     # 1. Aggregation: Calculate Mean and Std per Iteration & Split
