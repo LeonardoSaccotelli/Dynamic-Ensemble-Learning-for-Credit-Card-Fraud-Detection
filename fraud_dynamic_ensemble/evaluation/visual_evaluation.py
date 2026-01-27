@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Sequence
 
 import IPython.display as ipd
 import matplotlib.pyplot as plt
@@ -150,6 +150,159 @@ def plot_learning_curves(
     plt.savefig(save_path / fig_filename, dpi=300, bbox_inches="tight")
     plt.show()
     plt.close()
+
+
+def analyze_generalization_gap(
+    df: pd.DataFrame,
+    metrics_list: Sequence[str],
+    model_name: str,
+    save_path: Path
+) -> None:
+    """
+    Calculate and visualize the generalization gap (train minus test) for a given metric set.
+
+    This helper quantifies potential overfitting by computing, for each metric in
+    ``metrics_list``, the difference:
+
+        gap = resubstitution - generalization
+
+    using per-``(iteration, fold)`` paired values obtained via a pivot on the ``"split"``
+    column. The gap distributions are visualized across metrics using a boxplot
+    (summary statistics) overlaid with a strip plot (per-point values). The function
+    also writes:
+    - a PNG figure to ``save_path``, and
+    - a CSV of summary statistics (mean, std, min, max) per metric.
+
+    IMPORTANT: In the current implementation, ``model_name`` is used only for labeling
+    (plot title and output filenames). The function does **not** filter ``df`` by model.
+    If you want the analysis for a single model, pass a DataFrame already filtered to that
+    model (e.g., ``df[df["model"] == model_name]``).
+
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        Input table containing at least the columns: ``"iteration"``, ``"fold"``, and
+        ``"split"``. For each metric in ``metrics_list``, the DataFrame must contain a
+        corresponding numeric column. The ``"split"`` column is expected to include the
+        labels ``"resubstitution"`` and ``"generalization"`` to enable paired subtraction.
+    metrics_list : Sequence[str]
+        List of metric column names to include in the analysis (e.g.,
+        ``["f1", "average_precision", "roc_auc"]``). Each metric name must exist in ``df``.
+    model_name : str
+        Model identifier used for figure labeling (title) and output filenames. No filtering
+        is performed inside the function.
+    save_path : pathlib.Path
+        Output directory where the plot and CSV will be saved. The function assumes the
+        directory exists and is writable.
+
+    Returns
+    -------
+    None
+        Side effects only: prints progress messages, renders the plot, and writes:
+        - ``<model_name>_gap_analysis.png``
+        - ``<model_name>_gap_statistics.csv``
+
+    Notes
+    -----
+    - The gap is computed after pivoting as::
+
+          pivot_df = df.pivot_table(index=["iteration", "fold"], columns="split", values=metrics_list)
+
+      and then subtracting ``pivot_df[metric]["generalization"]`` from
+      ``pivot_df[metric]["resubstitution"]``.
+    - If a given ``(iteration, fold)`` pair is missing either split value, the corresponding
+      gap will be ``NaN`` and will propagate into the plot/statistics.
+    - Interpretation: positive gaps indicate better training performance than test
+      performance (a common symptom of overfitting for that metric).
+
+    Examples
+    --------
+    >>> import pandas as pd
+    >>> from pathlib import Path
+    >>> df = pd.DataFrame(
+    ...     {
+    ...         "model": ["M1", "M1", "M1", "M1"],
+    ...         "iteration": [1, 1, 1, 1],
+    ...         "fold": [1, 1, 2, 2],
+    ...         "split": ["resubstitution", "generalization", "resubstitution", "generalization"],
+    ...         "f1": [0.90, 0.80, 0.88, 0.86],
+    ...         "roc_auc": [0.95, 0.92, 0.94, 0.93],
+    ...     }
+    ... )
+    >>> analyze_generalization_gap(df=df, metrics_list=["f1", "roc_auc"], model_name="M1", save_path=Path("."))
+    >>> True
+    True
+    """
+
+    print(f"\n{'=' * 80}\nGAP ANALYSIS: {model_name.upper()}\n{'=' * 80}")
+
+    # 1. Pivot Data to align Train/Test for calculating the difference
+    # We create a table where we can subtract 'generalization' from 'resubstitution' directly
+    pivot_df = df.pivot_table(
+        index=["iteration", "fold"],
+        columns="split",
+        values=metrics_list
+    )
+
+    # 2. Calculate the Gap
+    # Gap = Resubstitution (Train) - Generalization (Test)
+    gap_data = pd.DataFrame(index=pivot_df.index)
+    for metric in metrics_list:
+        gap_data[metric] = pivot_df[metric]["resubstitution"] - pivot_df[metric]["generalization"]
+
+    # 3. Melt for Plotting
+    gap_long = gap_data.melt(var_name="Metric", value_name="Generalization Gap")
+
+    # 4. Plotting
+    plt.figure(figsize=(14, 8))
+    sns.set_style("whitegrid")
+
+    # A. Boxplot for Statistics (White box, black lines)
+    ax = sns.boxplot(
+        data=gap_long,
+        x="Metric",
+        y="Generalization Gap",
+        color="white",
+        linecolor="#333333",
+        width=0.6,
+        fliersize=0,        # Hide outliers here (we show them in the strip plot)
+        linewidth=1.5
+    )
+
+    # B. Strip Plot for Density & Outliers (Blue dots)
+    sns.stripplot(
+        data=gap_long,
+        x="Metric",
+        y="Generalization Gap",
+        color="#1f77b4",
+        alpha=0.4,          # Transparency allows seeing overlapping points
+        jitter=0.25,        # Spreads dots horizontally
+        size=4,
+        ax=ax
+    )
+
+    # C. Reference Line (Zero Gap)
+    plt.axhline(0, color="#d62728", linestyle="--", linewidth=2, alpha=0.8, label="Ideal Generalization (Gap=0)")
+
+    # 5. Styling
+    plt.title(f"Generalization Gap Analysis: {model_name}\n(Positive Values = Overfitting)",
+              fontsize=16, fontweight="bold", pad=20)
+    plt.ylabel("Performance Drop (Train Score - Test Score)", fontweight="bold")
+    plt.xlabel("Metric", fontweight="bold")
+    plt.grid(True, axis="y", alpha=0.5, linestyle="--")
+    plt.legend(loc="upper right", frameon=True)
+
+    # 6. Save Plot
+    fig_filename = f"{model_name}_gap_analysis.png"
+    plt.savefig(save_path / fig_filename, dpi=300, bbox_inches="tight")
+    plt.show()
+    plt.close()
+
+    # 7. Save Summary Statistics CSV
+    # Transpose describe() so metrics are rows, easier to read
+    summary_stats = gap_data.describe().T[["mean", "std", "min", "max"]]
+    summary_csv_name = f"{model_name}_gap_statistics.csv"
+    summary_stats.to_csv(save_path / summary_csv_name)
 
 
 def plot_model_distribution(
