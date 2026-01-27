@@ -12,7 +12,12 @@ import scikit_posthocs as sp
 import seaborn as sns
 
 
-def plot_learning_curves(df: pd.DataFrame, metric_name: str, save_path: Path) -> None:
+def plot_learning_curves(
+    df: pd.DataFrame,
+    metric_name: str,
+    model_name: str,
+    save_path: Path
+) -> None:
     """
     Plot train vs. generalization trajectories across iterations for a single metric.
 
@@ -122,7 +127,7 @@ def plot_learning_curves(df: pd.DataFrame, metric_name: str, save_path: Path) ->
     # 4. Formatting
     plt.ylim([0, 1.05])
     plt.title(
-        f"Learning Stability Analysis: {metric_name.upper()}",
+        f"Learning Stability Analysis for {model_name.upper()}: {metric_name.upper()}",
         fontsize=16,
         fontweight="bold",
         pad=15,
