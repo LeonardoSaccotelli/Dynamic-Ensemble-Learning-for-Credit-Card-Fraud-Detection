@@ -146,7 +146,7 @@ def plot_learning_curves(
     plt.grid(True, linestyle="--", alpha=0.6)
 
     # 5. Save
-    fig_filename = save_path / f"learning_curves_{metric_name}.png"
+    fig_filename = save_path / f"{model_name}_learning_curves_{metric_name}.png"
     plt.savefig(save_path / fig_filename, dpi=300, bbox_inches="tight")
     plt.show()
     plt.close()
