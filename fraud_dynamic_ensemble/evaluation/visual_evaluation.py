@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from pathlib import Path
 from typing import Optional, Sequence
 
@@ -10,6 +11,325 @@ import numpy as np
 import pandas as pd
 import scikit_posthocs as sp
 import seaborn as sns
+
+
+def analyze_roc_stability(df: pd.DataFrame, model_name: str, save_path: Path) -> pd.DataFrame:
+    """
+    Analyze ROC-space stability of a single model on the generalization split.
+
+    This helper filters the input results table to a single ``model_name`` and the
+    ``"generalization"`` split, then computes per-row ROC-space coordinates:
+
+    - True Positive Rate (TPR): ``tp / (tp + fn)``
+    - False Positive Rate (FPR): ``fp / (fp + tn)``
+
+    A small epsilon is added to denominators to reduce the risk of division-by-zero
+    in edge cases. The function visualizes the resulting (FPR, TPR) point cloud as a
+    scatter plot, overlays the centroid (mean FPR/TPR) as a highlighted marker, and
+    includes standard ROC-space reference elements (random-guess diagonal and the
+    ideal point (0, 1)). It also exports a CSV with summary statistics, including the
+    Euclidean distance from the centroid to the ideal point.
+
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        Input DataFrame containing evaluation results. Must include:
+        ``"model"``, ``"split"``, ``"tp"``, ``"fp"``, ``"tn"``, and ``"fn"`` columns.
+        The ``"split"`` column must contain the value ``"generalization"`` for the
+        desired evaluation subset.
+    model_name : str
+        Model identifier used to filter rows via ``df["model"] == model_name``.
+        Also used to build output filenames.
+    save_path : pathlib.Path
+        Directory where outputs are written. The function assumes the directory
+        exists and is writable.
+
+    Returns
+    -------
+    stats : pandas.DataFrame
+        Single-row DataFrame summarizing ROC-space stability with columns:
+        ``["Model", "Mean_TPR", "Std_TPR", "Mean_FPR", "Std_FPR", "Distance_to_Ideal"]``.
+        If no matching generalization rows are found, the function returns ``None``.
+
+    Notes
+    -----
+    - This analysis uses only the ``"generalization"`` split to reflect expected
+      deployment behavior.
+    - TPR and FPR are computed from confusion-matrix counts. If a fold contains no
+      positives or no negatives, denominators can be zero; an epsilon (``1e-9``) is
+      added to mitigate division-by-zero.
+    - The centroid is computed as the mean of per-row TPR and FPR values.
+    - Outputs:
+      - Figure: ``<model_name>_roc_stability_cloud.png``
+      - Statistics: ``<model_name>_roc_stability_stats.csv``
+
+    Examples
+    --------
+    >>> import pandas as pd
+    >>> from pathlib import Path
+    >>> df = pd.DataFrame(
+    ...     {
+    ...         "model": ["M1", "M1"],
+    ...         "split": ["generalization", "generalization"],
+    ...         "tp": [80, 75],
+    ...         "fn": [20, 25],
+    ...         "fp": [10, 12],
+    ...         "tn": [890, 888],
+    ...     }
+    ... )
+    >>> out = analyze_roc_stability(df, "M1", Path("."))
+    >>> (out is None) or (0.0 <= float(out["Mean_TPR"].iloc[0]) <= 1.0)
+    True
+    """
+
+    # 1. Filter Data: Generalization Split Only
+    # We focus on the test set to evaluate true reliability
+    model_data = df[(df["model"] == model_name) & (df["split"] == "generalization")].copy()
+
+    if model_data.empty:
+        print(f"Skipping {model_name}: No generalization data found.")
+        return
+
+    # 2. Calculate ROC Coordinates (TPR vs FPR) per fold
+    # We add a tiny epsilon (1e-9) to the denominator to prevent DivisionByZero errors
+    # in the rare edge case where a fold has 0 positives or 0 negatives.
+    model_data["tpr_calc"] = model_data["tp"] / (model_data["tp"] + model_data["fn"] + 1e-9)
+    model_data["fpr_calc"] = model_data["fp"] / (model_data["fp"] + model_data["tn"] + 1e-9)
+
+    # 3. Calculate Centroid (Mean Point)
+    mean_tpr = model_data["tpr_calc"].mean()
+    mean_fpr = model_data["fpr_calc"].mean()
+
+    # 4. Create Plot
+    plt.figure(figsize=(10, 10))  # Square aspect ratio is standard for ROC
+    sns.set_style("whitegrid")
+
+    # Plot the "Cloud" of individual folds
+    plt.scatter(
+        model_data["fpr_calc"],
+        model_data["tpr_calc"],
+        c="#1f77b4",
+        alpha=0.6,  # Transparency helps visualize density where points overlap
+        s=60,
+        edgecolor="white",
+        label="Individual Folds (100)",
+    )
+
+    # Plot the Centroid
+    plt.scatter(
+        mean_fpr,
+        mean_tpr,
+        c="#d62728",  # Red
+        s=300,
+        marker="*",
+        edgecolor="black",
+        zorder=10,
+        label=f"Mean Point (TPR={mean_tpr:.2f}, FPR={mean_fpr:.2f})",
+    )
+
+    # Plot Reference Lines
+    plt.plot([0, 1], [0, 1], color="grey", linestyle="--", linewidth=2, label="Random Guess")
+    plt.scatter(0, 1, c="green", s=100, marker="P", label="Ideal Point (0,1)")
+
+    # Styling
+    plt.title(
+        f"Stability Analysis: {model_name}\n(ROC Space Distribution)",
+        fontsize=16,
+        fontweight="bold",
+    )
+    plt.xlabel("False Positive Rate (1 - Specificity)", fontweight="bold")
+    plt.ylabel("True Positive Rate (Sensitivity)", fontweight="bold")
+    plt.xlim(-0.02, 1.02)
+    plt.ylim(-0.02, 1.02)
+    plt.grid(True, which="both", linestyle="--", linewidth=0.5)
+
+    # Legend Positioning
+    plt.legend(
+        loc="upper center",
+        bbox_to_anchor=(0.5, -0.1),
+        ncol=2,
+        frameon=True,
+        fontsize=12,
+        shadow=True,
+    )
+    plt.subplots_adjust(bottom=0.2)  # Ensure space for the legend
+
+    # 5. Save Figure
+    fig_filename = f"{model_name}_roc_stability_cloud.png"
+    plt.savefig(save_path / fig_filename, dpi=300, bbox_inches="tight")
+    plt.close()
+
+    # 6. Save Statistics
+    # We calculate the Euclidean distance to the ideal point (0,1) as a summary metric
+    stats = pd.DataFrame(
+        {
+            "Model": [model_name],
+            "Mean_TPR": [mean_tpr],
+            "Std_TPR": [model_data["tpr_calc"].std()],
+            "Mean_FPR": [mean_fpr],
+            "Std_FPR": [model_data["fpr_calc"].std()],
+            "Distance_to_Ideal": [np.sqrt(mean_fpr**2 + (1 - mean_tpr) ** 2)],
+        }
+    )
+
+    csv_filename = f"{model_name}_roc_stability_stats.csv"
+    stats.to_csv(save_path / csv_filename, index=False)
+
+    print(f"ROC Stability Analysis for {model_name} completed.")
+    print(f" -> Plot saved to: {save_path / fig_filename}")
+    print(f" -> Stats saved to: {save_path / csv_filename}\n")
+
+    return stats
+
+
+def analyze_partition_stability(
+    df: pd.DataFrame, model_name: str, metrics_list: Sequence[str], save_path: Path
+) -> None:
+    """
+    Visualize partition stability across iterations and folds using a grid of heatmaps.
+
+    This function analyzes performance variability for a single ``model_name`` on the
+    ``"generalization"`` split by creating one heatmap per metric in ``metrics_list``.
+    For each metric, it pivots the filtered data into an (iteration × fold) matrix and
+    renders a heatmap using a fixed color scale in the range ``[0.0, 1.0]`` with the
+    ``"nrg"`` colormap. A shared horizontal colorbar is added at the bottom of the
+    figure to ensure consistent interpretation across metrics.
+
+    If ``metrics_list`` contains multiple metrics, subplots are arranged in a compact
+    grid with two columns (and enough rows to fit all metrics). Any unused subplot axes
+    are removed.
+
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        Input DataFrame containing evaluation results. Must include columns:
+        ``"model"``, ``"split"``, ``"iteration"``, and ``"fold"``, plus all metric
+        columns specified in ``metrics_list``. The function filters rows where
+        ``df["model"] == model_name`` and ``df["split"] == "generalization"``.
+    model_name : str
+        Model identifier used to filter rows via ``df["model"] == model_name``.
+        Also used to build the output filename.
+    metrics_list : Sequence[str]
+        List of metric column names to visualize. Each entry must correspond to a
+        numeric column in ``df``. Heatmaps are created in the same order as provided.
+    save_path : pathlib.Path
+        Directory where the heatmap grid image is saved. The function assumes the
+        directory exists and is writable.
+
+    Returns
+    -------
+    None
+        This function returns ``None``. If no matching rows are found for the selected
+        model and split, it prints a message and returns early.
+
+    Notes
+    -----
+    - The visualization uses a fixed intensity range (``vmin=0.0``, ``vmax=1.0``) for
+      all heatmaps and the shared colorbar. Ensure the metrics plotted are naturally
+      bounded in ``[0, 1]`` (e.g., AUC, F1, accuracy) for meaningful interpretation.
+    - Heatmaps are annotated with values formatted to two decimal places.
+    - Output file:
+      - ``<model_name>_stability_heatmap_grid.png`` saved under ``save_path``.
+
+    Examples
+    --------
+    >>> import pandas as pd
+    >>> from pathlib import Path
+    >>> df = pd.DataFrame(
+    ...     {
+    ...         "model": ["M1", "M1", "M1", "M1"],
+    ...         "split": ["generalization"] * 4,
+    ...         "iteration": [1, 1, 2, 2],
+    ...         "fold": [1, 2, 1, 2],
+    ...         "roc_auc": [0.91, 0.89, 0.92, 0.90],
+    ...         "f1": [0.70, 0.68, 0.72, 0.69],
+    ...     }
+    ... )
+    >>> analyze_partition_stability(df, "M1", ["roc_auc", "f1"], Path("."))
+    >>> True
+    True
+    """
+
+    # 1. Filter Data: Model + Generalization Split
+    mask = (df["model"] == model_name) & (df["split"] == "generalization")
+    model_data = df[mask].copy()
+
+    if model_data.empty:
+        print(f"Skipping {model_name}: No generalization data found.")
+        return
+
+    # 2. Setup Subplots Grid
+    num_metrics = len(metrics_list)
+    cols = 2 if num_metrics > 1 else 1
+    rows = math.ceil(num_metrics / cols)
+
+    # Dynamic figure size
+    fig, axes = plt.subplots(rows, cols, figsize=(16, 5 * rows))
+
+    # Flatten axes
+    if num_metrics > 1:
+        axes = axes.flatten()
+    else:
+        axes = [axes]
+
+    # Global Title
+    fig.suptitle(
+        f"Partition Stability Analysis: {model_name}", fontsize=20, fontweight="bold", y=0.98
+    )
+
+    # 3. Loop through metrics
+    for i, metric in enumerate(metrics_list):
+        ax = axes[i]
+
+        # Prepare Pivot Table
+        heatmap_data = model_data.pivot(index="iteration", columns="fold", values=metric)
+
+        # Draw Heatmap
+        sns.heatmap(
+            heatmap_data,
+            ax=ax,
+            annot=True,
+            fmt=".2f",
+            cmap="brg",
+            cbar=False,
+            linewidths=0.5,
+            vmin=0.0,
+            vmax=1.0,
+        )
+
+        ax.set_title(f"Metric: {metric.upper()}", fontsize=14, fontweight="bold")
+        ax.set_xlabel("Fold", fontsize=14)
+        ax.set_ylabel("Iteration", fontsize=14)
+
+    # 4. Hide empty subplots
+    for j in range(i + 1, len(axes)):
+        fig.delaxes(axes[j])
+
+    # 5. Add Common Horizontal Colorbar at Bottom
+    plt.tight_layout()
+    fig.subplots_adjust(bottom=0.12)
+
+    # Define position: [left, bottom, width, height]
+    cbar_ax = fig.add_axes([0.15, 0.06, 0.7, 0.025])
+
+    norm = plt.Normalize(vmin=0.0, vmax=1.0)
+    sm = plt.cm.ScalarMappable(cmap="brg", norm=norm)
+    sm.set_array([])
+
+    # Define ticks every 0.05
+    ticks_range = np.arange(0, 1.05, 0.05)
+
+    cbar = fig.colorbar(sm, cax=cbar_ax, orientation="horizontal", ticks=ticks_range)
+    cbar.set_label(
+        "Score Intensity (0.0 - 1.0) | Blue=Low, Green=High", fontsize=12, fontweight="bold"
+    )
+
+    # 6. Save Figure
+    fig_filename = f"{model_name}_stability_heatmap_grid.png"
+    plt.savefig(save_path / fig_filename, dpi=300, bbox_inches="tight")
+    plt.close()
+
+    print(f"Heatmap Grid for {model_name} -> Saved at path:\n\t {save_path}\n")
 
 
 def plot_learning_curves(
