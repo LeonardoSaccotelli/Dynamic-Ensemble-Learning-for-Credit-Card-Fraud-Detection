@@ -1,0 +1,4 @@
+model,balanced_accuracy
+MLPClassifier (ClusterCentroids),0.919 ± 0.029
+MLPClassifier (RandomUnderSampler),0.918 ± 0.028
+MLPClassifier (Standard),0.917 ± 0.029

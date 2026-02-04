@@ -1,0 +1,4 @@
+model,balanced_accuracy
+XGBClassifier (ClusterCentroids),0.922 ± 0.027
+XGBClassifier (RandomUnderSampler),0.923 ± 0.026
+XGBClassifier (Standard),0.922 ± 0.026

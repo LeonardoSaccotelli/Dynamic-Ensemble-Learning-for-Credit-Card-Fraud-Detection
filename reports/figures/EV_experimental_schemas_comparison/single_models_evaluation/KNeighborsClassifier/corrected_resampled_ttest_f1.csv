@@ -1,0 +1,7 @@
+Metric,Model_A,Model_B,Mean_Diff,t-stat,p-value,is_significant,result
+f1,KNeighborsClassifier (ClusterCentroids),KNeighborsClassifier (RandomUnderSampler),0.0012128325930946815,0.07268076251994426,0.942206795786948,False,No Diff
+f1,KNeighborsClassifier (ClusterCentroids),KNeighborsClassifier (Standard),-0.004635086052671489,-0.3054807371286442,0.7606414187834787,False,No Diff
+f1,KNeighborsClassifier (RandomUnderSampler),KNeighborsClassifier (ClusterCentroids),-0.0012128325930946815,-0.07268076251994426,0.942206795786948,False,No Diff
+f1,KNeighborsClassifier (RandomUnderSampler),KNeighborsClassifier (Standard),-0.00584791864576617,-0.37368578125948326,0.7094371598645131,False,No Diff
+f1,KNeighborsClassifier (Standard),KNeighborsClassifier (ClusterCentroids),0.004635086052671489,0.3054807371286442,0.7606414187834787,False,No Diff
+f1,KNeighborsClassifier (Standard),KNeighborsClassifier (RandomUnderSampler),0.00584791864576617,0.37368578125948326,0.7094371598645131,False,No Diff

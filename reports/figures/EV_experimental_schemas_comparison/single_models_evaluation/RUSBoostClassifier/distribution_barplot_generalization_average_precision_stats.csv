@@ -1,0 +1,4 @@
+model,average_precision
+RUSBoostClassifier (ClusterCentroids),0.856 ± 0.053
+RUSBoostClassifier (RandomUnderSampler),0.854 ± 0.056
+RUSBoostClassifier (Standard),0.849 ± 0.052

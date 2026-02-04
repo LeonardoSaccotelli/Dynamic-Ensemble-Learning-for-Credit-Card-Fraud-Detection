@@ -1,0 +1,4 @@
+model,f1
+BalancedRandomForestClassifier (ClusterCentroids),0.128 ± 0.068
+BalancedRandomForestClassifier (RandomUnderSampler),0.146 ± 0.060
+BalancedRandomForestClassifier (Standard),0.039 ± 0.008

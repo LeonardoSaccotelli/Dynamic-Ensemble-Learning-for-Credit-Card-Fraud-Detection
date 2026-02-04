@@ -1,0 +1,4 @@
+model,f1
+XGBClassifier (ClusterCentroids),0.896 ± 0.034
+XGBClassifier (RandomUnderSampler),0.883 ± 0.034
+XGBClassifier (Standard),0.899 ± 0.032

@@ -1,0 +1,4 @@
+model,balanced_accuracy,average_precision,f1
+RRC (ClusterCentroids),0.915 ± 0.028,0.817 ± 0.073,0.823 ± 0.049
+RRC (RandomUnderSampler),0.915 ± 0.028,0.762 ± 0.075,0.803 ± 0.045
+RRC (Standard),0.917 ± 0.027,0.762 ± 0.077,0.808 ± 0.044

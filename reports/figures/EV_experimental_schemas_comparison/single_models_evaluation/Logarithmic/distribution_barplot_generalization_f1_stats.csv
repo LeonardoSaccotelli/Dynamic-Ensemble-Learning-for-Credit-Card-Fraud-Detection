@@ -1,0 +1,4 @@
+model,f1
+Logarithmic (ClusterCentroids),0.843 ± 0.042
+Logarithmic (RandomUnderSampler),0.834 ± 0.041
+Logarithmic (Standard),0.835 ± 0.041

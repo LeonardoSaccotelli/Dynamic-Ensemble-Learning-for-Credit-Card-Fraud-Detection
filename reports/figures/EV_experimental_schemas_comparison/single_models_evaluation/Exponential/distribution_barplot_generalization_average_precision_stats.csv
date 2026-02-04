@@ -1,0 +1,4 @@
+model,average_precision
+Exponential (ClusterCentroids),0.819 ± 0.074
+Exponential (RandomUnderSampler),0.760 ± 0.074
+Exponential (Standard),0.767 ± 0.077

@@ -1,0 +1,7 @@
+Metric,Model_A,Model_B,Mean_Diff,t-stat,p-value,is_significant,result
+average_precision,RUSBoostClassifier (ClusterCentroids),RUSBoostClassifier (RandomUnderSampler),0.0025437959828480405,0.09119409637832215,0.927522631247262,False,No Diff
+average_precision,RUSBoostClassifier (ClusterCentroids),RUSBoostClassifier (Standard),0.00709919056800179,0.3143733499666852,0.7538990429284831,False,No Diff
+average_precision,RUSBoostClassifier (RandomUnderSampler),RUSBoostClassifier (ClusterCentroids),-0.0025437959828480405,-0.09119409637832215,0.927522631247262,False,No Diff
+average_precision,RUSBoostClassifier (RandomUnderSampler),RUSBoostClassifier (Standard),0.004555394585153749,0.17402715310779443,0.8621994886090292,False,No Diff
+average_precision,RUSBoostClassifier (Standard),RUSBoostClassifier (ClusterCentroids),-0.00709919056800179,-0.3143733499666852,0.7538990429284831,False,No Diff
+average_precision,RUSBoostClassifier (Standard),RUSBoostClassifier (RandomUnderSampler),-0.004555394585153749,-0.17402715310779443,0.8621994886090292,False,No Diff

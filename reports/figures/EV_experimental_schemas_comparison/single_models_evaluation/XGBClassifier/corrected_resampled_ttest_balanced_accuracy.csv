@@ -1,0 +1,7 @@
+Metric,Model_A,Model_B,Mean_Diff,t-stat,p-value,is_significant,result
+balanced_accuracy,XGBClassifier (ClusterCentroids),XGBClassifier (RandomUnderSampler),-0.0014612594526359768,-0.10501827225233056,0.916573790051734,False,No Diff
+balanced_accuracy,XGBClassifier (ClusterCentroids),XGBClassifier (Standard),-0.0008856274206447967,-0.07118384082905936,0.943395044965268,False,No Diff
+balanced_accuracy,XGBClassifier (RandomUnderSampler),XGBClassifier (ClusterCentroids),0.0014612594526359768,0.10501827225233056,0.916573790051734,False,No Diff
+balanced_accuracy,XGBClassifier (RandomUnderSampler),XGBClassifier (Standard),0.0005756320319911801,0.05196676343146348,0.9586598891164597,False,No Diff
+balanced_accuracy,XGBClassifier (Standard),XGBClassifier (ClusterCentroids),0.0008856274206447967,0.07118384082905936,0.943395044965268,False,No Diff
+balanced_accuracy,XGBClassifier (Standard),XGBClassifier (RandomUnderSampler),-0.0005756320319911801,-0.05196676343146348,0.9586598891164597,False,No Diff

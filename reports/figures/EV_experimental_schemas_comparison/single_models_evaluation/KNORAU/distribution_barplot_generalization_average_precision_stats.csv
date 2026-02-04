@@ -1,0 +1,4 @@
+model,average_precision
+KNORAU (ClusterCentroids),0.847 ± 0.047
+KNORAU (RandomUnderSampler),0.850 ± 0.049
+KNORAU (Standard),0.851 ± 0.048

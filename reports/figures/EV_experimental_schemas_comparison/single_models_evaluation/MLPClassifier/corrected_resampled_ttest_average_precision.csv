@@ -1,0 +1,7 @@
+Metric,Model_A,Model_B,Mean_Diff,t-stat,p-value,is_significant,result
+average_precision,MLPClassifier (ClusterCentroids),MLPClassifier (RandomUnderSampler),-0.003556247279883573,-0.15906425929244675,0.8739422948126179,False,No Diff
+average_precision,MLPClassifier (ClusterCentroids),MLPClassifier (Standard),-0.019358763126494538,-0.9937530551891558,0.32276582085109673,False,No Diff
+average_precision,MLPClassifier (RandomUnderSampler),MLPClassifier (ClusterCentroids),0.003556247279883573,0.15906425929244675,0.8739422948126179,False,No Diff
+average_precision,MLPClassifier (RandomUnderSampler),MLPClassifier (Standard),-0.015802515846610965,-0.8022540538820944,0.42432763647073435,False,No Diff
+average_precision,MLPClassifier (Standard),MLPClassifier (ClusterCentroids),0.019358763126494538,0.9937530551891558,0.32276582085109673,False,No Diff
+average_precision,MLPClassifier (Standard),MLPClassifier (RandomUnderSampler),0.015802515846610965,0.8022540538820944,0.42432763647073435,False,No Diff

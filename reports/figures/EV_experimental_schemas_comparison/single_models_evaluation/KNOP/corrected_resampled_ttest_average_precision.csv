@@ -1,0 +1,7 @@
+Metric,Model_A,Model_B,Mean_Diff,t-stat,p-value,is_significant,result
+average_precision,KNOP (ClusterCentroids),KNOP (RandomUnderSampler),-0.0025115158950839156,-0.0973959654158896,0.9226088583547758,False,No Diff
+average_precision,KNOP (ClusterCentroids),KNOP (Standard),-0.0035777629915774156,-0.1553194392580898,0.8768857335830413,False,No Diff
+average_precision,KNOP (RandomUnderSampler),KNOP (ClusterCentroids),0.0025115158950839156,0.0973959654158896,0.9226088583547758,False,No Diff
+average_precision,KNOP (RandomUnderSampler),KNOP (Standard),-0.0010662470964935,-0.044622242009424044,0.9644982954897244,False,No Diff
+average_precision,KNOP (Standard),KNOP (ClusterCentroids),0.0035777629915774156,0.1553194392580898,0.8768857335830413,False,No Diff
+average_precision,KNOP (Standard),KNOP (RandomUnderSampler),0.0010662470964935,0.044622242009424044,0.9644982954897244,False,No Diff

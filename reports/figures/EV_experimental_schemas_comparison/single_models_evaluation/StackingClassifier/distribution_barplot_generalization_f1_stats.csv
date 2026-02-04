@@ -1,0 +1,4 @@
+model,f1
+StackingClassifier (ClusterCentroids),0.867 ± 0.036
+StackingClassifier (RandomUnderSampler),0.772 ± 0.042
+StackingClassifier (Standard),0.747 ± 0.042

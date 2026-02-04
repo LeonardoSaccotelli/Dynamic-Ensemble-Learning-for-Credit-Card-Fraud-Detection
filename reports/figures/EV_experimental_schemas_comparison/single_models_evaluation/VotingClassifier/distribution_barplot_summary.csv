@@ -1,0 +1,4 @@
+model,balanced_accuracy,average_precision,f1
+VotingClassifier (ClusterCentroids),0.923 ± 0.027,0.881 ± 0.041,0.899 ± 0.033
+VotingClassifier (RandomUnderSampler),0.923 ± 0.025,0.882 ± 0.040,0.885 ± 0.035
+VotingClassifier (Standard),0.923 ± 0.026,0.884 ± 0.038,0.899 ± 0.031

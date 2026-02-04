@@ -1,0 +1,7 @@
+Metric,Model_A,Model_B,Mean_Diff,t-stat,p-value,is_significant,result
+f1,APosteriori (ClusterCentroids),APosteriori (RandomUnderSampler),0.07229532620677026,1.7431125208340668,0.08441871348825652,False,No Diff
+f1,APosteriori (ClusterCentroids),APosteriori (Standard),0.06895565682476823,1.7193033615456172,0.0886843133238138,False,No Diff
+f1,APosteriori (RandomUnderSampler),APosteriori (ClusterCentroids),-0.07229532620677026,-1.7431125208340668,0.08441871348825652,False,No Diff
+f1,APosteriori (RandomUnderSampler),APosteriori (Standard),-0.0033396693820020307,-0.07417912701212936,0.9410175320797561,False,No Diff
+f1,APosteriori (Standard),APosteriori (ClusterCentroids),-0.06895565682476823,-1.7193033615456172,0.0886843133238138,False,No Diff
+f1,APosteriori (Standard),APosteriori (RandomUnderSampler),0.0033396693820020307,0.07417912701212936,0.9410175320797561,False,No Diff

@@ -1,0 +1,4 @@
+model,average_precision
+DecisionTreeClassifier (ClusterCentroids),0.670 ± 0.126
+DecisionTreeClassifier (RandomUnderSampler),0.474 ± 0.120
+DecisionTreeClassifier (Standard),0.480 ± 0.111

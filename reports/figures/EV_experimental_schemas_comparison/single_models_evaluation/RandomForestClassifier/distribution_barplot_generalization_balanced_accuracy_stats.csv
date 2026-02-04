@@ -1,0 +1,4 @@
+model,balanced_accuracy
+RandomForestClassifier (ClusterCentroids),0.916 ± 0.027
+RandomForestClassifier (RandomUnderSampler),0.916 ± 0.028
+RandomForestClassifier (Standard),0.916 ± 0.028

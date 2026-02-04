@@ -1,0 +1,4 @@
+model,average_precision
+LogitBoostClassifier (ClusterCentroids),0.864 ± 0.045
+LogitBoostClassifier (RandomUnderSampler),0.867 ± 0.046
+LogitBoostClassifier (Standard),0.796 ± 0.096

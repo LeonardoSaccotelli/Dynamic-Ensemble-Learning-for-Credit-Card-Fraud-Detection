@@ -1,0 +1,7 @@
+Metric,Model_A,Model_B,Mean_Diff,t-stat,p-value,is_significant,result
+average_precision,DecisionTreeClassifier (ClusterCentroids),DecisionTreeClassifier (RandomUnderSampler),0.1953954284635992,3.2175368353568583,0.0017479032932910452,True,Better
+average_precision,DecisionTreeClassifier (ClusterCentroids),DecisionTreeClassifier (Standard),0.1893616453827418,3.3054009361986147,0.0013216630009766743,True,Better
+average_precision,DecisionTreeClassifier (RandomUnderSampler),DecisionTreeClassifier (ClusterCentroids),-0.1953954284635992,-3.2175368353568583,0.0017479032932910452,True,Worse
+average_precision,DecisionTreeClassifier (RandomUnderSampler),DecisionTreeClassifier (Standard),-0.006033783080857391,-0.10701442057079813,0.9149941032835924,False,No Diff
+average_precision,DecisionTreeClassifier (Standard),DecisionTreeClassifier (ClusterCentroids),-0.1893616453827418,-3.3054009361986147,0.0013216630009766743,True,Worse
+average_precision,DecisionTreeClassifier (Standard),DecisionTreeClassifier (RandomUnderSampler),0.006033783080857391,0.10701442057079813,0.9149941032835924,False,No Diff

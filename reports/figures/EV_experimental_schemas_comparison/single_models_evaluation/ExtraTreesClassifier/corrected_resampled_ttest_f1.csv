@@ -1,0 +1,7 @@
+Metric,Model_A,Model_B,Mean_Diff,t-stat,p-value,is_significant,result
+f1,ExtraTreesClassifier (ClusterCentroids),ExtraTreesClassifier (RandomUnderSampler),0.0022667996751345454,0.12524371058969985,0.9005845895663125,False,No Diff
+f1,ExtraTreesClassifier (ClusterCentroids),ExtraTreesClassifier (Standard),0.003369276977041702,0.1998114536583796,0.8420378944451731,False,No Diff
+f1,ExtraTreesClassifier (RandomUnderSampler),ExtraTreesClassifier (ClusterCentroids),-0.0022667996751345454,-0.12524371058969985,0.9005845895663125,False,No Diff
+f1,ExtraTreesClassifier (RandomUnderSampler),ExtraTreesClassifier (Standard),0.0011024773019071565,0.06479407205639257,0.9484686177921888,False,No Diff
+f1,ExtraTreesClassifier (Standard),ExtraTreesClassifier (ClusterCentroids),-0.003369276977041702,-0.1998114536583796,0.8420378944451731,False,No Diff
+f1,ExtraTreesClassifier (Standard),ExtraTreesClassifier (RandomUnderSampler),-0.0011024773019071565,-0.06479407205639257,0.9484686177921888,False,No Diff

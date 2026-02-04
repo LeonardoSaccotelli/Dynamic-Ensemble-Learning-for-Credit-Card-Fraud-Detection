@@ -1,0 +1,4 @@
+model,balanced_accuracy
+DecisionTreeClassifier (ClusterCentroids),0.886 ± 0.041
+DecisionTreeClassifier (RandomUnderSampler),0.872 ± 0.036
+DecisionTreeClassifier (Standard),0.871 ± 0.034

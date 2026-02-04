@@ -1,0 +1,4 @@
+model,f1
+APosteriori (ClusterCentroids),0.817 ± 0.060
+APosteriori (RandomUnderSampler),0.744 ± 0.098
+APosteriori (Standard),0.748 ± 0.096

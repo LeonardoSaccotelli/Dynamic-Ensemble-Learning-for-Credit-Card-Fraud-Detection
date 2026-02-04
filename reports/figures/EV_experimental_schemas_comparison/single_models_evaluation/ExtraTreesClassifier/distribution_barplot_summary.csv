@@ -1,0 +1,4 @@
+model,balanced_accuracy,average_precision,f1
+ExtraTreesClassifier (ClusterCentroids),0.908 ± 0.030,0.869 ± 0.042,0.882 ± 0.036
+ExtraTreesClassifier (RandomUnderSampler),0.908 ± 0.029,0.864 ± 0.043,0.880 ± 0.036
+ExtraTreesClassifier (Standard),0.907 ± 0.029,0.866 ± 0.044,0.879 ± 0.037

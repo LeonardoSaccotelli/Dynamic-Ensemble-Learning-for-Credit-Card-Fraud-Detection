@@ -1,0 +1,4 @@
+model,balanced_accuracy,average_precision,f1
+DESKL (ClusterCentroids),0.912 ± 0.029,0.862 ± 0.047,0.877 ± 0.037
+DESKL (RandomUnderSampler),0.912 ± 0.028,0.857 ± 0.048,0.875 ± 0.036
+DESKL (Standard),0.913 ± 0.028,0.858 ± 0.048,0.877 ± 0.035

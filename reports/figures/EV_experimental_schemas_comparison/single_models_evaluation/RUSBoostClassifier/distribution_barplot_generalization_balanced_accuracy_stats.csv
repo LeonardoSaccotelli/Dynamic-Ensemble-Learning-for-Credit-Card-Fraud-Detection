@@ -1,0 +1,4 @@
+model,balanced_accuracy
+RUSBoostClassifier (ClusterCentroids),0.914 ± 0.026
+RUSBoostClassifier (RandomUnderSampler),0.922 ± 0.025
+RUSBoostClassifier (Standard),0.920 ± 0.026

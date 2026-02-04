@@ -1,0 +1,4 @@
+model,f1
+LogitBoostClassifier (ClusterCentroids),0.882 ± 0.039
+LogitBoostClassifier (RandomUnderSampler),0.883 ± 0.039
+LogitBoostClassifier (Standard),0.835 ± 0.050

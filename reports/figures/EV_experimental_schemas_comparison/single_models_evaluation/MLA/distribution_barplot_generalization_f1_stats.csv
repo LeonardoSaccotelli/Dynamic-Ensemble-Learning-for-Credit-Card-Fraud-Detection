@@ -1,0 +1,4 @@
+model,f1
+MLA (ClusterCentroids),0.802 ± 0.080
+MLA (RandomUnderSampler),0.790 ± 0.076
+MLA (Standard),0.784 ± 0.087

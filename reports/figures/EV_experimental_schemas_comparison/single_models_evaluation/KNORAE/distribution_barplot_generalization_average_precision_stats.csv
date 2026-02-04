@@ -1,0 +1,4 @@
+model,average_precision
+KNORAE (ClusterCentroids),0.705 ± 0.094
+KNORAE (RandomUnderSampler),0.603 ± 0.110
+KNORAE (Standard),0.626 ± 0.117

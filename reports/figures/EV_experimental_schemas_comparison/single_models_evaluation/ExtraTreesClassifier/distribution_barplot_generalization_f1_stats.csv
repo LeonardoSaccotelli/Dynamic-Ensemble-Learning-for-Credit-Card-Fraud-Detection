@@ -1,0 +1,4 @@
+model,f1
+ExtraTreesClassifier (ClusterCentroids),0.882 ± 0.036
+ExtraTreesClassifier (RandomUnderSampler),0.880 ± 0.036
+ExtraTreesClassifier (Standard),0.879 ± 0.037

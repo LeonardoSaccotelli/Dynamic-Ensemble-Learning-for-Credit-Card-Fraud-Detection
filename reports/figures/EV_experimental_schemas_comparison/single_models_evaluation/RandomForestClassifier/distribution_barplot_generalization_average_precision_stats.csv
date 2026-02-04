@@ -1,0 +1,4 @@
+model,average_precision
+RandomForestClassifier (ClusterCentroids),0.856 ± 0.048
+RandomForestClassifier (RandomUnderSampler),0.858 ± 0.047
+RandomForestClassifier (Standard),0.859 ± 0.047

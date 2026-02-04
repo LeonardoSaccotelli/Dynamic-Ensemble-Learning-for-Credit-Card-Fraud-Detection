@@ -1,0 +1,7 @@
+Metric,Model_A,Model_B,Mean_Diff,t-stat,p-value,is_significant,result
+balanced_accuracy,Logarithmic (ClusterCentroids),Logarithmic (RandomUnderSampler),0.0007348795193605762,0.05076564617420586,0.9596145519995074,False,No Diff
+balanced_accuracy,Logarithmic (ClusterCentroids),Logarithmic (Standard),-0.00042019325817299613,-0.035890729923334704,0.9714417562902113,False,No Diff
+balanced_accuracy,Logarithmic (RandomUnderSampler),Logarithmic (ClusterCentroids),-0.0007348795193605762,-0.05076564617420586,0.9596145519995074,False,No Diff
+balanced_accuracy,Logarithmic (RandomUnderSampler),Logarithmic (Standard),-0.0011550727775335723,-0.10042266494603294,0.9202118651359223,False,No Diff
+balanced_accuracy,Logarithmic (Standard),Logarithmic (ClusterCentroids),0.00042019325817299613,0.035890729923334704,0.9714417562902113,False,No Diff
+balanced_accuracy,Logarithmic (Standard),Logarithmic (RandomUnderSampler),0.0011550727775335723,0.10042266494603294,0.9202118651359223,False,No Diff

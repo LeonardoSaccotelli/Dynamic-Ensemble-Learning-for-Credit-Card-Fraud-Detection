@@ -1,0 +1,4 @@
+model,f1
+DecisionTreeClassifier (ClusterCentroids),0.768 ± 0.088
+DecisionTreeClassifier (RandomUnderSampler),0.666 ± 0.092
+DecisionTreeClassifier (Standard),0.671 ± 0.088

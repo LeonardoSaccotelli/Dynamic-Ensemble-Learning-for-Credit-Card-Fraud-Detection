@@ -1,0 +1,4 @@
+model,average_precision
+MLA (ClusterCentroids),0.759 ± 0.076
+MLA (RandomUnderSampler),0.718 ± 0.091
+MLA (Standard),0.727 ± 0.092

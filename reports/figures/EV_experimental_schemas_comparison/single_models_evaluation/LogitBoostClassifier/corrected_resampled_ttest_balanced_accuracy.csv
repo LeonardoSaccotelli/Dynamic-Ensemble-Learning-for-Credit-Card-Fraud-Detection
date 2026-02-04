@@ -1,0 +1,7 @@
+Metric,Model_A,Model_B,Mean_Diff,t-stat,p-value,is_significant,result
+balanced_accuracy,LogitBoostClassifier (ClusterCentroids),LogitBoostClassifier (RandomUnderSampler),-0.0052538772479985285,-0.33139541867283173,0.7410463002175792,False,No Diff
+balanced_accuracy,LogitBoostClassifier (ClusterCentroids),LogitBoostClassifier (Standard),0.031851823727677475,2.1017898165736186,0.038109973741464694,True,Better
+balanced_accuracy,LogitBoostClassifier (RandomUnderSampler),LogitBoostClassifier (ClusterCentroids),0.0052538772479985285,0.33139541867283173,0.7410463002175792,False,No Diff
+balanced_accuracy,LogitBoostClassifier (RandomUnderSampler),LogitBoostClassifier (Standard),0.037105700975676004,2.3052609946683758,0.023239141032413622,True,Better
+balanced_accuracy,LogitBoostClassifier (Standard),LogitBoostClassifier (ClusterCentroids),-0.031851823727677475,-2.1017898165736186,0.038109973741464694,True,Worse
+balanced_accuracy,LogitBoostClassifier (Standard),LogitBoostClassifier (RandomUnderSampler),-0.037105700975676004,-2.3052609946683758,0.023239141032413622,True,Worse

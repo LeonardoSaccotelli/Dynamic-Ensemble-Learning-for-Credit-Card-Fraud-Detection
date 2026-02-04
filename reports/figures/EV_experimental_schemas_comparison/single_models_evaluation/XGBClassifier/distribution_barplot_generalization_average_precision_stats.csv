@@ -1,0 +1,4 @@
+model,average_precision
+XGBClassifier (ClusterCentroids),0.887 ± 0.039
+XGBClassifier (RandomUnderSampler),0.892 ± 0.037
+XGBClassifier (Standard),0.902 ± 0.034

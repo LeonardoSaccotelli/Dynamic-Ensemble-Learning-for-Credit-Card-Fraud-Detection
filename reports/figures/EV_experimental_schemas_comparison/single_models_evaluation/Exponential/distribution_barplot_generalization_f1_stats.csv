@@ -1,0 +1,4 @@
+model,f1
+Exponential (ClusterCentroids),0.819 ± 0.048
+Exponential (RandomUnderSampler),0.800 ± 0.044
+Exponential (Standard),0.806 ± 0.049

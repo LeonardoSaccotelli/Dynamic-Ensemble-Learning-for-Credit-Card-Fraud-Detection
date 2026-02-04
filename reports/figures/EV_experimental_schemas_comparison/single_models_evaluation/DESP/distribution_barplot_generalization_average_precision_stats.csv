@@ -1,0 +1,4 @@
+model,average_precision
+DESP (ClusterCentroids),0.831 ± 0.065
+DESP (RandomUnderSampler),0.801 ± 0.068
+DESP (Standard),0.803 ± 0.071

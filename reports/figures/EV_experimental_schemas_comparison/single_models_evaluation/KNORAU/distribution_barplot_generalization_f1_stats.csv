@@ -1,0 +1,4 @@
+model,f1
+KNORAU (ClusterCentroids),0.624 ± 0.169
+KNORAU (RandomUnderSampler),0.539 ± 0.114
+KNORAU (Standard),0.544 ± 0.128

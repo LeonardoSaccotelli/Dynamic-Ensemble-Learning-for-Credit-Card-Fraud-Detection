@@ -1,0 +1,4 @@
+model,balanced_accuracy,average_precision,f1
+APosteriori (ClusterCentroids),0.907 ± 0.032,0.809 ± 0.064,0.817 ± 0.060
+APosteriori (RandomUnderSampler),0.915 ± 0.027,0.817 ± 0.055,0.744 ± 0.098
+APosteriori (Standard),0.914 ± 0.028,0.815 ± 0.056,0.748 ± 0.096

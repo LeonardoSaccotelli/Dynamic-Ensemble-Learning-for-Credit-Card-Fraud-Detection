@@ -1,0 +1,4 @@
+model,balanced_accuracy,average_precision,f1
+StackingClassifier (ClusterCentroids),0.927 ± 0.025,0.884 ± 0.040,0.867 ± 0.036
+StackingClassifier (RandomUnderSampler),0.936 ± 0.023,0.887 ± 0.038,0.772 ± 0.042
+StackingClassifier (Standard),0.935 ± 0.022,0.884 ± 0.038,0.747 ± 0.042

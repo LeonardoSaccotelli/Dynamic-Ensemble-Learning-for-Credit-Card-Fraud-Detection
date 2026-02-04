@@ -1,0 +1,7 @@
+Metric,Model_A,Model_B,Mean_Diff,t-stat,p-value,is_significant,result
+f1,VotingClassifier (ClusterCentroids),VotingClassifier (RandomUnderSampler),0.01385391664857949,0.8073143155935611,0.4214208250335879,False,No Diff
+f1,VotingClassifier (ClusterCentroids),VotingClassifier (Standard),0.000235174672535865,0.015412386950628677,0.9877341990191406,False,No Diff
+f1,VotingClassifier (RandomUnderSampler),VotingClassifier (ClusterCentroids),-0.01385391664857949,-0.8073143155935611,0.4214208250335879,False,No Diff
+f1,VotingClassifier (RandomUnderSampler),VotingClassifier (Standard),-0.013618741976043625,-0.9593098183136014,0.3397397151394025,False,No Diff
+f1,VotingClassifier (Standard),VotingClassifier (ClusterCentroids),-0.000235174672535865,-0.015412386950628677,0.9877341990191406,False,No Diff
+f1,VotingClassifier (Standard),VotingClassifier (RandomUnderSampler),0.013618741976043625,0.9593098183136014,0.3397397151394025,False,No Diff

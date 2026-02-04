@@ -1,0 +1,7 @@
+Metric,Model_A,Model_B,Mean_Diff,t-stat,p-value,is_significant,result
+average_precision,RRC (ClusterCentroids),RRC (RandomUnderSampler),0.05540337085326119,1.6141377027312958,0.10968052966600923,False,No Diff
+average_precision,RRC (ClusterCentroids),RRC (Standard),0.05484889906317891,1.6461420097757735,0.1029056524954566,False,No Diff
+average_precision,RRC (RandomUnderSampler),RRC (ClusterCentroids),-0.05540337085326119,-1.6141377027312958,0.10968052966600923,False,No Diff
+average_precision,RRC (RandomUnderSampler),RRC (Standard),-0.0005544717900822782,-0.012864509737466057,0.9897617785946362,False,No Diff
+average_precision,RRC (Standard),RRC (ClusterCentroids),-0.05484889906317891,-1.6461420097757735,0.1029056524954566,False,No Diff
+average_precision,RRC (Standard),RRC (RandomUnderSampler),0.0005544717900822782,0.012864509737466057,0.9897617785946362,False,No Diff

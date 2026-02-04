@@ -1,0 +1,7 @@
+Metric,Model_A,Model_B,Mean_Diff,t-stat,p-value,is_significant,result
+balanced_accuracy,KNORAE (ClusterCentroids),KNORAE (RandomUnderSampler),0.0058596729839353046,0.3797758176749039,0.7049253081329551,False,No Diff
+balanced_accuracy,KNORAE (ClusterCentroids),KNORAE (Standard),0.004304753140924822,0.34322350659052614,0.7321580980011819,False,No Diff
+balanced_accuracy,KNORAE (RandomUnderSampler),KNORAE (ClusterCentroids),-0.0058596729839353046,-0.3797758176749039,0.7049253081329551,False,No Diff
+balanced_accuracy,KNORAE (RandomUnderSampler),KNORAE (Standard),-0.0015549198430104827,-0.10877426263577131,0.913601704037518,False,No Diff
+balanced_accuracy,KNORAE (Standard),KNORAE (ClusterCentroids),-0.004304753140924822,-0.34322350659052614,0.7321580980011819,False,No Diff
+balanced_accuracy,KNORAE (Standard),KNORAE (RandomUnderSampler),0.0015549198430104827,0.10877426263577131,0.913601704037518,False,No Diff

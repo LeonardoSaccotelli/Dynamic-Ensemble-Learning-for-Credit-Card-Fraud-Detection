@@ -1,0 +1,4 @@
+model,f1
+RUSBoostClassifier (ClusterCentroids),0.763 ± 0.051
+RUSBoostClassifier (RandomUnderSampler),0.690 ± 0.057
+RUSBoostClassifier (Standard),0.702 ± 0.059

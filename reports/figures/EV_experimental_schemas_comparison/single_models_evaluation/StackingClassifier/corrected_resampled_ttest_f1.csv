@@ -1,0 +1,7 @@
+Metric,Model_A,Model_B,Mean_Diff,t-stat,p-value,is_significant,result
+f1,StackingClassifier (ClusterCentroids),StackingClassifier (RandomUnderSampler),0.09554043580399563,5.138019064708169,1.3958901871776494e-06,True,Better
+f1,StackingClassifier (ClusterCentroids),StackingClassifier (Standard),0.12057652042357647,6.593675414426607,2.114029156321352e-09,True,Better
+f1,StackingClassifier (RandomUnderSampler),StackingClassifier (ClusterCentroids),-0.09554043580399563,-5.138019064708169,1.3958901871776494e-06,True,Worse
+f1,StackingClassifier (RandomUnderSampler),StackingClassifier (Standard),0.025036084619580845,1.2290704382168738,0.22195876119207905,False,No Diff
+f1,StackingClassifier (Standard),StackingClassifier (ClusterCentroids),-0.12057652042357647,-6.593675414426607,2.114029156321352e-09,True,Worse
+f1,StackingClassifier (Standard),StackingClassifier (RandomUnderSampler),-0.025036084619580845,-1.2290704382168738,0.22195876119207905,False,No Diff

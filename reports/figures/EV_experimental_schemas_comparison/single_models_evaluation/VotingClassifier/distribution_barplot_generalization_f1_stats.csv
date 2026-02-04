@@ -1,0 +1,4 @@
+model,f1
+VotingClassifier (ClusterCentroids),0.899 ± 0.033
+VotingClassifier (RandomUnderSampler),0.885 ± 0.035
+VotingClassifier (Standard),0.899 ± 0.031

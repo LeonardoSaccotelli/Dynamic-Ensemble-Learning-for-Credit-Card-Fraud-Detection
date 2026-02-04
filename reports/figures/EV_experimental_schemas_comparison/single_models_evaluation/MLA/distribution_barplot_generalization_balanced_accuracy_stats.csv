@@ -1,0 +1,4 @@
+model,balanced_accuracy
+MLA (ClusterCentroids),0.883 ± 0.036
+MLA (RandomUnderSampler),0.875 ± 0.040
+MLA (Standard),0.878 ± 0.037

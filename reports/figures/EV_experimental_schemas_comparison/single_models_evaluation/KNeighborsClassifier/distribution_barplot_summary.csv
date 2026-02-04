@@ -1,0 +1,4 @@
+model,balanced_accuracy,average_precision,f1
+KNeighborsClassifier (ClusterCentroids),0.919 ± 0.027,0.873 ± 0.044,0.888 ± 0.032
+KNeighborsClassifier (RandomUnderSampler),0.921 ± 0.027,0.873 ± 0.044,0.887 ± 0.033
+KNeighborsClassifier (Standard),0.915 ± 0.028,0.859 ± 0.048,0.893 ± 0.034

@@ -1,0 +1,7 @@
+Metric,Model_A,Model_B,Mean_Diff,t-stat,p-value,is_significant,result
+average_precision,DESKL (ClusterCentroids),DESKL (RandomUnderSampler),0.004542547311745415,0.17976200846114276,0.8577068363136137,False,No Diff
+average_precision,DESKL (ClusterCentroids),DESKL (Standard),0.0034162749342497856,0.15853960707591688,0.8743545671960917,False,No Diff
+average_precision,DESKL (RandomUnderSampler),DESKL (ClusterCentroids),-0.004542547311745415,-0.17976200846114276,0.8577068363136137,False,No Diff
+average_precision,DESKL (RandomUnderSampler),DESKL (Standard),-0.0011262723774956296,-0.05207514657920287,0.9585737477871255,False,No Diff
+average_precision,DESKL (Standard),DESKL (ClusterCentroids),-0.0034162749342497856,-0.15853960707591688,0.8743545671960917,False,No Diff
+average_precision,DESKL (Standard),DESKL (RandomUnderSampler),0.0011262723774956296,0.05207514657920287,0.9585737477871255,False,No Diff

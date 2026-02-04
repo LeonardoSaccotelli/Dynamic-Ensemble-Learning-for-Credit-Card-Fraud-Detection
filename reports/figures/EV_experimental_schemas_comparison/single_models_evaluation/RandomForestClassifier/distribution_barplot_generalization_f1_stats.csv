@@ -1,0 +1,4 @@
+model,f1
+RandomForestClassifier (ClusterCentroids),0.880 ± 0.037
+RandomForestClassifier (RandomUnderSampler),0.869 ± 0.038
+RandomForestClassifier (Standard),0.869 ± 0.039

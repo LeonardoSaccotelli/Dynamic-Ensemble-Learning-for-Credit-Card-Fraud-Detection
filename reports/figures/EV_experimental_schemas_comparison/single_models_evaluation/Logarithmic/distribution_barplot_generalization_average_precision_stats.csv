@@ -1,0 +1,4 @@
+model,average_precision
+Logarithmic (ClusterCentroids),0.829 ± 0.062
+Logarithmic (RandomUnderSampler),0.789 ± 0.068
+Logarithmic (Standard),0.783 ± 0.071

@@ -1,0 +1,4 @@
+model,balanced_accuracy
+LogitBoostClassifier (ClusterCentroids),0.904 ± 0.032
+LogitBoostClassifier (RandomUnderSampler),0.909 ± 0.030
+LogitBoostClassifier (Standard),0.872 ± 0.036

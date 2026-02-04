@@ -1,0 +1,4 @@
+model,f1
+DESKL (ClusterCentroids),0.877 ± 0.037
+DESKL (RandomUnderSampler),0.875 ± 0.036
+DESKL (Standard),0.877 ± 0.035

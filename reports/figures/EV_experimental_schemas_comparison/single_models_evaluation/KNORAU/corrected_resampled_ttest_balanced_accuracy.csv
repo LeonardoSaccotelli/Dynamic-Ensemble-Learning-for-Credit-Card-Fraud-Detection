@@ -1,0 +1,7 @@
+Metric,Model_A,Model_B,Mean_Diff,t-stat,p-value,is_significant,result
+balanced_accuracy,KNORAU (ClusterCentroids),KNORAU (RandomUnderSampler),0.0009193343221146622,0.07027544818616355,0.9441161851655354,False,No Diff
+balanced_accuracy,KNORAU (ClusterCentroids),KNORAU (Standard),-0.0006531923625295866,-0.0579333352943723,0.9539185031139072,False,No Diff
+balanced_accuracy,KNORAU (RandomUnderSampler),KNORAU (ClusterCentroids),-0.0009193343221146622,-0.07027544818616355,0.9441161851655354,False,No Diff
+balanced_accuracy,KNORAU (RandomUnderSampler),KNORAU (Standard),-0.0015725266846442487,-0.1452802826888969,0.8847849580471197,False,No Diff
+balanced_accuracy,KNORAU (Standard),KNORAU (ClusterCentroids),0.0006531923625295866,0.0579333352943723,0.9539185031139072,False,No Diff
+balanced_accuracy,KNORAU (Standard),KNORAU (RandomUnderSampler),0.0015725266846442487,0.1452802826888969,0.8847849580471197,False,No Diff

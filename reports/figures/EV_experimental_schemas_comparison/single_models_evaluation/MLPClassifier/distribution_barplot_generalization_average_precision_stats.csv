@@ -1,0 +1,4 @@
+model,average_precision
+MLPClassifier (ClusterCentroids),0.877 ± 0.045
+MLPClassifier (RandomUnderSampler),0.881 ± 0.043
+MLPClassifier (Standard),0.897 ± 0.037

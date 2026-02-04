@@ -1,0 +1,4 @@
+model,f1
+APriori (ClusterCentroids),0.501 ± 0.063
+APriori (RandomUnderSampler),0.521 ± 0.079
+APriori (Standard),0.523 ± 0.071

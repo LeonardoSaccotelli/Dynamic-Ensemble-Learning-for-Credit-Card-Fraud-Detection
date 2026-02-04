@@ -1,0 +1,4 @@
+model,f1
+RRC (ClusterCentroids),0.823 ± 0.049
+RRC (RandomUnderSampler),0.803 ± 0.045
+RRC (Standard),0.808 ± 0.044

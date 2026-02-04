@@ -1,0 +1,4 @@
+model,f1
+KNeighborsClassifier (ClusterCentroids),0.888 ± 0.032
+KNeighborsClassifier (RandomUnderSampler),0.887 ± 0.033
+KNeighborsClassifier (Standard),0.893 ± 0.034

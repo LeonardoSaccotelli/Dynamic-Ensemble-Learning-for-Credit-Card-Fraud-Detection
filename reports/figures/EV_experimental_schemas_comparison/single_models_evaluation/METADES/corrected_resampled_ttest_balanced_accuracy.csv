@@ -1,0 +1,7 @@
+Metric,Model_A,Model_B,Mean_Diff,t-stat,p-value,is_significant,result
+balanced_accuracy,METADES (ClusterCentroids),METADES (RandomUnderSampler),0.006583479424083993,0.3909862338144666,0.6966475748846068,False,No Diff
+balanced_accuracy,METADES (ClusterCentroids),METADES (Standard),0.0061863123993219915,0.4063653823691185,0.6853512419162946,False,No Diff
+balanced_accuracy,METADES (RandomUnderSampler),METADES (ClusterCentroids),-0.006583479424083993,-0.3909862338144666,0.6966475748846068,False,No Diff
+balanced_accuracy,METADES (RandomUnderSampler),METADES (Standard),-0.00039716702476200183,-0.026244337067061627,0.9791152813883638,False,No Diff
+balanced_accuracy,METADES (Standard),METADES (ClusterCentroids),-0.0061863123993219915,-0.4063653823691185,0.6853512419162946,False,No Diff
+balanced_accuracy,METADES (Standard),METADES (RandomUnderSampler),0.00039716702476200183,0.026244337067061627,0.9791152813883638,False,No Diff

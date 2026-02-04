@@ -1,0 +1,4 @@
+model,f1
+MLPClassifier (ClusterCentroids),0.884 ± 0.038
+MLPClassifier (RandomUnderSampler),0.875 ± 0.034
+MLPClassifier (Standard),0.890 ± 0.035

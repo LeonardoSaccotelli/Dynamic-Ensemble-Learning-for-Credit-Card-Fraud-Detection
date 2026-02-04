@@ -1,0 +1,4 @@
+model,average_precision
+METADES (ClusterCentroids),0.613 ± 0.131
+METADES (RandomUnderSampler),0.549 ± 0.133
+METADES (Standard),0.556 ± 0.133

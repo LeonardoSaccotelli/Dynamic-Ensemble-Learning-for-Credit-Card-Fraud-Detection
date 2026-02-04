@@ -1,0 +1,4 @@
+model,average_precision
+KNOP (ClusterCentroids),0.843 ± 0.051
+KNOP (RandomUnderSampler),0.846 ± 0.050
+KNOP (Standard),0.847 ± 0.052

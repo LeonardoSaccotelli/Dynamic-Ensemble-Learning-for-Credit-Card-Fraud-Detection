@@ -1,0 +1,4 @@
+model,f1
+DESP (ClusterCentroids),0.745 ± 0.110
+DESP (RandomUnderSampler),0.670 ± 0.082
+DESP (Standard),0.675 ± 0.084

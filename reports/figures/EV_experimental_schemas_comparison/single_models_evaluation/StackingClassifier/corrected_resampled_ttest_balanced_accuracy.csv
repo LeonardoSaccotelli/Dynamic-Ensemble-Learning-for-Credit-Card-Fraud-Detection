@@ -1,0 +1,7 @@
+Metric,Model_A,Model_B,Mean_Diff,t-stat,p-value,is_significant,result
+balanced_accuracy,StackingClassifier (ClusterCentroids),StackingClassifier (RandomUnderSampler),-0.008688990391213847,-0.6921938276295707,0.4904359598760112,False,No Diff
+balanced_accuracy,StackingClassifier (ClusterCentroids),StackingClassifier (Standard),-0.007844435245551784,-0.6811425349267322,0.49737147639223633,False,No Diff
+balanced_accuracy,StackingClassifier (RandomUnderSampler),StackingClassifier (ClusterCentroids),0.008688990391213847,0.6921938276295707,0.4904359598760112,False,No Diff
+balanced_accuracy,StackingClassifier (RandomUnderSampler),StackingClassifier (Standard),0.0008445551456620626,0.08149985814529034,0.9352089795801442,False,No Diff
+balanced_accuracy,StackingClassifier (Standard),StackingClassifier (ClusterCentroids),0.007844435245551784,0.6811425349267322,0.49737147639223633,False,No Diff
+balanced_accuracy,StackingClassifier (Standard),StackingClassifier (RandomUnderSampler),-0.0008445551456620626,-0.08149985814529034,0.9352089795801442,False,No Diff
