@@ -1,0 +1,24 @@
+model,balanced_accuracy
+APosteriori,0.914 ± 0.028
+APriori,0.900 ± 0.027
+BalancedRandomForestClassifier,0.516 ± 0.055
+DESKL,0.913 ± 0.028
+DESP,0.915 ± 0.028
+DecisionTreeClassifier,0.871 ± 0.034
+Exponential,0.917 ± 0.027
+ExtraTreesClassifier,0.907 ± 0.029
+KNOP,0.913 ± 0.027
+KNORAE,0.900 ± 0.031
+KNORAU,0.914 ± 0.025
+KNeighborsClassifier,0.915 ± 0.028
+Logarithmic,0.917 ± 0.027
+LogitBoostClassifier,0.872 ± 0.036
+METADES,0.894 ± 0.033
+MLA,0.878 ± 0.037
+MLPClassifier,0.917 ± 0.029
+RRC,0.917 ± 0.027
+RUSBoostClassifier,0.920 ± 0.026
+RandomForestClassifier,0.916 ± 0.028
+StackingClassifier,0.935 ± 0.022
+VotingClassifier,0.923 ± 0.026
+XGBClassifier,0.922 ± 0.026
