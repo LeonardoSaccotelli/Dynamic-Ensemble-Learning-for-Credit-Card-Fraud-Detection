@@ -178,7 +178,7 @@ cython_debug/
 .idea/
 
 notebooks/test/*
-models/*
+
 outs/*
 !outs/.gitkeep
 
@@ -202,7 +202,3 @@ models_to_pass
 
 predict.py
 plots.py
-
-docs/
-docs/docs/
-references/
