@@ -80,13 +80,14 @@ make clean_environment,Completely remove the venv directory.
 make freeze,Update the requirements.txt file with current environment state.
 
 
-| Command           | Description |
-|-------------------| ------------- |
-| ```make lint ```  | Check code quality and formatting using Ruff. |
-| ```make format ``` | Automatically fix linting issues and format code. |
-| ```make clean ``` | Remove __pycache__ and compiled Python files  |
+| Command                       | Description |
+|-------------------------------| ------------- |
+| ```make help ```              | Display a list of all available commands and their descriptions.|
+| ```make lint ```              | Check code quality and formatting using Ruff. |
+| ```make format ```            | Automatically fix linting issues and format code. |
+| ```make clean ```             | Remove __pycache__ and compiled Python files  |
 | ```make clean_environment ``` | Completely remove the venv directory. |
-| ```make freeze ``` | Update the requirements.txt file with current environment state.|
+| ```make freeze ```            | Update the requirements.txt file with current environment state.|
 
 ---
 
@@ -215,6 +216,46 @@ This script relies on the logic defined in `fraud_dynamic_ensemble/config.py`.
 | ```DAY_SECONDS``` | ```86,400``` |   The period used for time encoding (24 hours in seconds).         |
 | ```PROCESSED_FILENAME ``` | ```credit_card_fraud_features.csv```               |       The final output file used for training.  |
 
+
+---
+
+## ⚙️ ️ Model Training & Evaluation
+The training phase evaluates three categories of models: **Static ML models** (e.g., Random Forest, XGBoost), **Static Ensembles** (Voting/Stacking), and **Dynamic Ensemble Selection (DES)** (using `DESlib`).
+
+***1. Training Execution***
+To trigger the full training pipeline, use:
+
+```bash 
+make train
+```
+
+**What this command does:**
+
+- **Data Preparation**: Loads the processed features, shuffles the data, and converts it to NumPy arrays for high-performance computation and `DESlib` compatibility.
+- **Outer Evaluation (10x10 CV)**: Executes a **Repeated Stratified K-Fold** (10 splits, 10 repeats) to ensure that performance metrics are statistically robust and not a result of a "lucky" data split.
+- **Hyperparameter Tuning**: For every fold, it performs an inner **RandomizedSearchCV** to optimize feature selection (`SelectKBest`) and model parameters.
+- **Imbalance Handling**: Simultaneously applies **Cost-Sensitive Learning** (via `class_weight`) and **Resampling** (e.g., Cluster Centroids) as defined in your configuration.
+- **Persistence**: Saves detailed CSVs of **Generalization** (test) and **Resubstitution** (train) metrics for every single model in a dedicated experiment folder.
+
+**2. Configuration & Parameters**
+
+This script relies on the logic defined in `fraud_dynamic_ensemble/config.py`. You can modify the nature of the experiment by toggling these specific settings:
+
+| Category        | Parameter         | Description  |
+|-----------------|-------------------------|--------------|
+| **Imbalance**   | ```USE_COST_SENSITIVE_LEARNING``` |     If `True`, models will use `class_weight` to penalize fraud errors more heavily.        |
+| **Resampling**  | ```RESAMPLING_METHOD```                |      Options include `ClusterCentroids`, `RandomUnderSampler`, or `None`.   |
+| **Selection**   | ```FS_K_BEST_CANDIDATES```              |   A list of values (e.g., `[20, 24, "all"]`) that the tuner will test to find the best number of features.       |
+| **Parallelism** | ```CV_OUTER_PARALLEL_N_JOBS```              |     Number of CPU cores to use for the outer folds. Set to `-1` for all cores.  |
+| **DES**         | ```DSEL_SIZE```                |    The percentage of data (e.g., `0.20`) reserved to train the "competence" of Dynamic Ensembles.         |
+
+**3. Understanding the Experiment Logic**
+
+Before running, ensure you uncomment the models you want to test in the `STATIC_MODELS` and `DES_MODELS` lists within `config.py`.
+
+- **Static Ensembles**: These are fixed after training. The script builds a "Pool" (e.g., using `RandomForest` and `XGBoost`) and combines them.
+- **Dynamic Ensembles (DES)**: Unlike static models, these "decide" which expert model to trust for each specific transaction based on the local neighborhood of the data point.
+- **Metric Focus**: Because accuracy is misleading in fraud, the pipeline focuses on `F1-Score` (defined by `TUNING_SCORING`) to balance catching thieves (Recall) without flagging too many innocent customers (Precision).
 
 ---
 
