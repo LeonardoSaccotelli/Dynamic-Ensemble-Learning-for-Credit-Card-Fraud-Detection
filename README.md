@@ -116,3 +116,45 @@ make dataset
 | ```EXTERNAL_FILENAME ```      | ```creditcardfraud.csv```             |        The final filename used by the project scripts.      |
 | ```RANDOM_STATE ```           | ```42```                                 |    Ensures reproducibility across data splits and sampling.          |
 
+--- 
+## 📉 Data Sampling & Reduction
+
+The second step in the pipeline is to transition from the **External** (full) data to a **Raw** (subsampled) dataset. This allows for faster experimentation without losing the rare fraudulent signals.
+
+1. **Subsampling Execution**
+
+
+Use the following command to generate your subsampled dataset based on the current configuration:
+```bash
+make dataset_sampling
+````
+**What this command does:**
+
+- Loads the full dataset from `data/external/`.
+- Logs the initial class distribution (e.g., showing that Fraud is roughly **0.17%** of the data).
+- Applies one of several sampling **policies** (defined in your config).
+- Saves the resulting subset to `data/raw/credit_card_fraud_sampling.csv`.
+
+2. **Sampling Configuration**
+
+You can control how the data is reduced by modifying these variables in `fraud_dynamic_ensemble/config.py`.
+
+The script is highly flexible, specifically supporting a "keep all minority" approach which is standard in fraud detection research to ensure no rare fraud cases are lost during data reduction.
+
+| Variable      | Default Value           | Description  |
+|---------------|-------------------------|--------------|
+| ```POLICY ``` | ```keep_all_minority``` |     Options: `random`, `stratified`, or `keep_all_minority`.         |
+| ```RATIO ```  | ```50```                |       Used with `keep_all_minority`. A ratio of `50` means the script will keep 100% of fraud cases and sample enough legitimate cases to reach a 1:50 ratio.     |
+| ```N_ROWS ``` | ```None```              |    The absolute number of rows to sample (mutually exclusive with `FRAC`).       |
+| ```FRAC ```   | ```None```              |      The percentage of the dataset to keep (e.g., `0.1` for 10%).  |
+| ```RANDOM_STATE ```           | ```42```                                 |    Ensures reproducibility across data splits and sampling.          |
+
+3. **Sampling Policies Explained**
+
+- `keep_all_minority`: Specifically designed for fraud. It retains every single fraudulent transaction and samples the majority class based on the `RATIO` you set. This is the recommended setting for this project.
+
+- `stratified`: Reduces the dataset size while maintaining the original percentage of fraud (useful if you want to keep the "needle in the haystack" difficulty exactly the same).
+
+- `random`: A simple random draw from the data without regard for class labels.
+
+---
