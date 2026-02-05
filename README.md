@@ -80,12 +80,12 @@ make clean_environment,Completely remove the venv directory.
 make freeze,Update the requirements.txt file with current environment state.
 
 
-| Command                 | Description |
-|-------------------------| ------------- |
-| ```bash make lint ```   | Check code quality and formatting using Ruff. |
-| ```bash make format ``` | Automatically fix linting issues and format code. |
-| ```bash make clean ```  | Remove __pycache__ and compiled Python files  |
-| ```bash make clean_environment ``` | Completely remove the venv directory. |
-| ```bash make freeze ```   | Update the requirements.txt file with current environment state.|
+| Command           | Description |
+|-------------------| ------------- |
+| ```make lint ```  | Check code quality and formatting using Ruff. |
+| ```make format ``` | Automatically fix linting issues and format code. |
+| ```make clean ``` | Remove __pycache__ and compiled Python files  |
+| ```make clean_environment ``` | Completely remove the venv directory. |
+| ```make freeze ``` | Update the requirements.txt file with current environment state.|
 
 ---
