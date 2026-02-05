@@ -188,3 +188,34 @@ The script is highly flexible, specifically supporting a "keep all minority" app
 | ```INTERIM_DATA_DIR / INTERIM_FILENAME ```  | ```data/interim/credit_card_fraud_cleaned.csv```                |       The output destination for cleaned data.  |
 
 ---
+
+## 🛠 Feature Engineering & Transformation
+The final stage of the data pipeline converts cleaned data into a **Processed** dataset. This script applies mathematical transformations to handle the high variance of transaction amounts and the periodic nature of time.
+
+**1. Feature Engineering Execution**
+
+To generate the final features for your models, run:
+```bash
+make features
+````
+
+**What this command does:**
+
+- **Log Transformation**: Applies `log1p` to the `Amount` column. This compresses the range of transaction values, helping models handle extreme outliers common in financial data.
+- **Cyclical Time Encoding**: Converts the linear `Time` column (seconds from the first transaction) into `Time_sin` and `Time_cos` features. This allows the model to understand that the end of one day is temporally close to the start of the next.
+- **Column Reordering**: Moves the `Class` target to the final position for standard pipeline compatibility.
+- Saves the result to `data/processed/credit_card_fraud_features.csv`.
+
+**2. Configuration & Parameters**
+
+This script relies on the logic defined in `fraud_dynamic_ensemble/config.py`.
+
+| Variable      | Default Value          | Description  |
+|---------------|------------------------|--------------|
+| ```DAY_SECONDS``` | ```86,400``` |   The period used for time encoding (24 hours in seconds).         |
+| ```PROCESSED_FILENAME ``` | ```credit_card_fraud_features.csv```               |       The final output file used for training.  |
+
+
+---
+
+
