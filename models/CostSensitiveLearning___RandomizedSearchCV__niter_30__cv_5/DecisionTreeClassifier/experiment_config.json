@@ -1,0 +1,29 @@
+{
+  "experiment_description": "",
+  "experiment_start_time": "2025/12/17-17:50:09",
+  "use_cost_sensitive_learning": true,
+  "feature_transformation_standard_scaler": [
+    "Amount_log1p"
+  ],
+  "feature_selection_KBest_candidates": [
+    20,
+    22,
+    24,
+    26,
+    28,
+    "all"
+  ],
+  "resampling_method": null,
+  "resampling_params": {},
+  "outer_evaluation_loop": "RepeatedStratifiedKFold_10_times_10_folds",
+  "DSEL_size": 0.2,
+  "tuning_hyperparameters_n_iter": 30,
+  "tuning_hyperparameters_cv_splits": 5,
+  "tuning_hyperparameters_scoring": "f1",
+  "tuning_hyperparameters_n_jobs": -1,
+  "static_models_to_train": [
+    "DecisionTreeClassifier"
+  ],
+  "des_models_to_train": [],
+  "experiment_end_time": "2025/12/17-17:56:41"
+}

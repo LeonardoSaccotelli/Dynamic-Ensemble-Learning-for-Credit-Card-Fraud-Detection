@@ -1,0 +1,34 @@
+{
+  "experiment_description": "",
+  "experiment_start_time": "2025/12/28-15:52:37",
+  "use_cost_sensitive_learning": true,
+  "feature_transformation_standard_scaler": [
+    "Amount_log1p"
+  ],
+  "feature_selection_KBest_candidates": [
+    20,
+    22,
+    24,
+    26,
+    28,
+    "all"
+  ],
+  "resampling_method": "ClusterCentroids",
+  "outer_evaluation_loop": "RepeatedStratifiedKFold_10_times_10_folds",
+  "DSEL_size": 0.2,
+  "tuning_hyperparameters_n_iter": 30,
+  "tuning_hyperparameters_cv_splits": 5,
+  "tuning_hyperparameters_scoring": "f1",
+  "tuning_hyperparameters_n_jobs": 150,
+  "static_models_to_train": [],
+  "static_ensemble_models_to_train": [
+    "StackingClassifier"
+  ],
+  "static_ensemble_pools": [
+    "ExtraTreesClassifier",
+    "RandomForestClassifier",
+    "XGBClassifier"
+  ],
+  "des_models_to_train": [],
+  "experiment_end_time": "2025/12/28-23:52:14"
+}
