@@ -4,8 +4,6 @@
     <img src="https://img.shields.io/badge/CCDS-Project%20template-328F97?logo=cookiecutter" />
 </a>
 
-# Dynamic Ensemble Learning for Credit Card Fraud Detection
-
 ## 📖 Project Description
 This project addresses the critical challenge of identifying fraudulent transactions within highly **unbalanced datasets**. In the context of credit card fraud, legitimate transactions vastly outnumber fraudulent ones, making standard machine learning approaches biased toward the majority class.
 
