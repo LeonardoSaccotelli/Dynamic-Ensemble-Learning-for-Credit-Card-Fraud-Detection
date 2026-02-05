@@ -261,3 +261,9 @@ Before running, ensure you uncomment the models you want to test in the `STATIC_
 ---
 
 
+
+---
+
+## License
+
+This project is released under the [LICENSE](LICENSE). See the LICENSE file for details.
