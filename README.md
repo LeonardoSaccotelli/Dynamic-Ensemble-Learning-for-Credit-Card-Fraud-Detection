@@ -121,7 +121,7 @@ make dataset
 
 The second step in the pipeline is to transition from the **External** (full) data to a **Raw** (subsampled) dataset. This allows for faster experimentation without losing the rare fraudulent signals.
 
-1. **Subsampling Execution**
+**1. Subsampling Execution**
 
 
 Use the following command to generate your subsampled dataset based on the current configuration:
@@ -135,7 +135,7 @@ make dataset_sampling
 - Applies one of several sampling **policies** (defined in your config).
 - Saves the resulting subset to `data/raw/credit_card_fraud_sampling.csv`.
 
-2. **Sampling Configuration**
+**2. Sampling Configuration**
 
 You can control how the data is reduced by modifying these variables in `fraud_dynamic_ensemble/config.py`.
 
@@ -149,12 +149,42 @@ The script is highly flexible, specifically supporting a "keep all minority" app
 | ```FRAC ```   | ```None```              |      The percentage of the dataset to keep (e.g., `0.1` for 10%).  |
 | ```RANDOM_STATE ```           | ```42```                                 |    Ensures reproducibility across data splits and sampling.          |
 
-3. **Sampling Policies Explained**
+**3. Sampling Policies Explained**
 
 - `keep_all_minority`: Specifically designed for fraud. It retains every single fraudulent transaction and samples the majority class based on the `RATIO` you set. This is the recommended setting for this project.
 
 - `stratified`: Reduces the dataset size while maintaining the original percentage of fraud (useful if you want to keep the "needle in the haystack" difficulty exactly the same).
 
 - `random`: A simple random draw from the data without regard for class labels.
+
+---
+
+## 🧹 Data Cleaning & Deduplication
+Once the raw sample is created, the next phase of the pipeline is cleaning. This script focuses on removing redundancy to prepare a high-quality **Interim** dataset.
+
+**1. Cleaning Execution**
+
+To process your raw data into a cleaned format, run:
+```bash
+make cleaning
+````
+**What this command does:**
+
+- Loads the subsampled data from `data/raw/`.
+- **Deduplication**: Scans all columns and removes exact duplicate rows (keeping the first occurrence).
+- **Audit Trail**: Logs the exact number and percentage of duplicates removed.
+- **Integrity Check**: Re-calculates and logs the class distribution to ensure the fraud-to-legitimate ratio remains stable after cleaning.
+- Saves the result to `data/interim/credit_card_fraud_cleaned.csv`.
+
+**2. Cleaning Configuration**
+
+This script relies on the pathing logic defined in `fraud_dynamic_ensemble/config.py`. While the core logic is automated, the following paths are used:
+
+The script is highly flexible, specifically supporting a "keep all minority" approach which is standard in fraud detection research to ensure no rare fraud cases are lost during data reduction.
+
+| Variable      | Default Value           | Description  |
+|---------------|-------------------------|--------------|
+| ```RAW_DATA_DIR / RAW_FILENAME``` | ```data/raw/credit_card_fraud_sampling.csv``` |    The input source (generated in the previous step).         |
+| ```INTERIM_DATA_DIR / INTERIM_FILENAME ```  | ```data/interim/credit_card_fraud_cleaned.csv```                |       The output destination for cleaned data.  |
 
 ---
