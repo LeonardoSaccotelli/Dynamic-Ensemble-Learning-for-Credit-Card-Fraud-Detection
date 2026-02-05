@@ -4,58 +4,90 @@
     <img src="https://img.shields.io/badge/CCDS-Project%20template-328F97?logo=cookiecutter" />
 </a>
 
-Dynamic Ensemble Learning for Credit Card Fraud Detection using Oversampling & Undersampling Techniques
+# Dynamic Ensemble Learning for Credit Card Fraud Detection
 
-## Project Organization
+## 📖 Project Description
+This project addresses the critical challenge of identifying fraudulent transactions within highly **unbalanced datasets**. In the context of credit card fraud, legitimate transactions vastly outnumber fraudulent ones, making standard machine learning approaches biased toward the majority class.
 
-```
-├── LICENSE            <- Open-source license if one is chosen
-├── Makefile           <- Makefile with convenience commands like `make data` or `make train`
-├── README.md          <- The top-level README for developers using this project.
-├── data
-│   ├── external       <- Data from third party sources.
-│   ├── interim        <- Intermediate data that has been transformed.
-│   ├── processed      <- The final, canonical data sets for modeling.
-│   └── raw            <- The original, immutable data dump.
-│
-├── docs               <- A default mkdocs project; see www.mkdocs.org for details
-│
-├── models             <- Trained and serialized models, model predictions, or model summaries
-│
-├── notebooks          <- Jupyter notebooks. Naming convention is a number (for ordering),
-│                         the creator's initials, and a short `-` delimited description, e.g.
-│                         `1.0-jqp-initial-data-exploration`.
-│
-├── pyproject.toml     <- Project configuration file with package metadata for 
-│                         src and configuration for tools like black
-│
-├── references         <- Data dictionaries, manuals, and all other explanatory materials.
-│
-├── reports            <- Generated analysis as HTML, PDF, LaTeX, etc.
-│   └── figures        <- Generated graphics and figures to be used in reporting
-│
-├── requirements.txt   <- The requirements file for reproducing the analysis environment, e.g.
-│                         generated with `pip freeze > requirements.txt`
-│
-├── setup.cfg          <- Configuration file for flake8
-│
-└── src   <- Source code for use in this project.
-    │
-    ├── __init__.py             <- Makes src a Python module
-    │
-    ├── config.py               <- Store useful variables and configuration
-    │
-    ├── dataset.py              <- Scripts to download or generate data
-    │
-    ├── features.py             <- Code to create features for modeling
-    │
-    ├── modeling                
-    │   ├── __init__.py 
-    │   ├── predict.py          <- Code to run model inference with trained models          
-    │   └── train.py            <- Code to train models
-    │
-    └── plots.py                <- Code to create visualizations
+The core of this research is a comparative analysis between **Static Ensemble Learning** and **Dynamic Ensemble Selection (DES)**. By evaluating how these models behave when the "cost" of misclassification is high, this project aims to identify the most robust architecture for financial security.
+
+### 🧪 Handling Class Imbalance
+The framework implements a multi-tiered strategy to handle the class distribution gap:
+
+* **Cost-Sensitive Learning:** Implementation of the `class_weight` parameter across models to assign a higher penalty to fraudulent misclassifications, forcing the algorithms to prioritize the minority class.
+* **Hybrid Resampling Pipeline:** While the codebase is built to be modular, the primary focus is on the combination of:
+    * **Random Undersampling:** To reduce majority class noise.
+    * **Cluster Centroids:** A sophisticated undersampling technique that replaces clusters of majority samples with their centroids to preserve structural information.
+* **Full `imbalanced-learn` Support:** The architecture is designed for flexibility, natively supporting any oversampling or undersampling method provided by the `imblearn` library.
+
+### 📉 Big Data & Subsampling
+Recognizing the computational strain of modern financial datasets, the project includes an **Initial Subsampling** layer. This allows for the efficient processing of large-scale data by reducing the initial volume while maintaining the statistical properties required for effective fraud detection.
+
+---
+
+## 🔬 Core Objectives
+1.  **Benchmarking:** Comparing the predictive power of static ensembles (fixed at training) against dynamic ensembles (which adaptively select the best model for each specific transaction).
+2.  **Strategy Comparison:** Evaluating the trade-offs between "Cost-Sensitive only" approaches vs. "Cost-Sensitive + Resampling" (Undersampling/Cluster Centroids).
+3.  **Modular Scalability:** Providing a codebase that can easily swap different balancing techniques to find the optimal configuration for any skewed dataset.
+
+---
+
+## 🛠 Installation & Environment Setup
+
+This project uses a `Makefile` to automate the setup process. Ensure you have **Python 3.10** installed on your system before proceeding.
+
+### 1. Clone the Repository
+```bash
+git clone [https://github.com/YourUsername/Dynamic-Ensemble-Learning-for-Credit-Card-Fraud-Detection.git](https://github.com/YourUsername/Dynamic-Ensemble-Learning-for-Credit-Card-Fraud-Detection.git)
+cd Dynamic-Ensemble-Learning-for-Credit-Card-Fraud-Detection
 ```
 
---------
+### 2. Create the Virtual Environment
+```bash
+make create_environment
+```
 
+### 3. Activate the Environment
+Based on your operating system, run the activation command:
+- Linux/macOS:
+```bash
+source venv/bin/activate
+```
+
+- Windows (Command Prompt):
+```bash
+.\venv\Scripts\activate.bat
+```
+
+- Windows (PowerShell):
+```bash
+.\venv\Scripts\Activate.ps1
+```
+
+### 4. Install Dependencies
+Once the environment is activated, install the required libraries (including the dynamic ensemble dependencies):
+```bash
+make requirements
+```
+
+---
+
+
+## 🧹 Maintenance Commands
+
+The Makefile also includes utility commands for project maintenance:
+
+make clean,Remove __pycache__ and compiled Python files.
+make clean_environment,Completely remove the venv directory.
+make freeze,Update the requirements.txt file with current environment state.
+
+
+| Command                 | Description |
+|-------------------------| ------------- |
+| ```bash make lint ```   | Check code quality and formatting using Ruff. |
+| ```bash make format ``` | Automatically fix linting issues and format code. |
+| ```bash make clean ```  | Remove __pycache__ and compiled Python files  |
+| ```bash make clean_environment ``` | Completely remove the venv directory. |
+| ```bash make freeze ```   | Update the requirements.txt file with current environment state.|
+
+---
