@@ -89,3 +89,30 @@ make freeze,Update the requirements.txt file with current environment state.
 | ```make freeze ``` | Update the requirements.txt file with current environment state.|
 
 ---
+
+## 📊 Data Workflow
+
+The project manages data through a structured pipeline. Before running any analysis, you must retrieve the raw dataset.
+
+### 1. External Dataset Acquisition
+The first step is to download the "Credit Card Fraud Detection" dataset from Kaggle. This is handled automatically by the ```dataset.py``` script.
+
+**Execution:**
+
+```bash
+make dataset
+```
+
+**What this command does:**
+- Checks if the dataset already exists in ```data/external/```. 
+- If missing, it uses ```kagglehub``` to download the ```mlg-ulb/creditcardfraud``` dataset. 
+- Moves and renames the file to match the project's internal configuration.
+ 
+**Related Configuration** (```fraud_dynamic_ensemble/config.py```): The script relies on these path definitions. If you wish to change where data is stored, modify these variables:
+
+| Variable                      | Default Value                         | Description  |
+|-------------------------------|---------------------------------------|--------------|
+| ```EXTERNAL_DATA_DIR ```      | ```PROJ_ROOT / "data" / "external"``` |     The directory where external raw data is stored.         |
+| ```EXTERNAL_FILENAME ```      | ```creditcardfraud.csv```             |        The final filename used by the project scripts.      |
+| ```RANDOM_STATE ```           | ```42```                                 |    Ensures reproducibility across data splits and sampling.          |
+
