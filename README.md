@@ -222,7 +222,7 @@ This script relies on the logic defined in `fraud_dynamic_ensemble/config.py`.
 ## ⚙️ ️ Model Training & Evaluation
 The training phase evaluates three categories of models: **Static ML models** (e.g., Random Forest, XGBoost), **Static Ensembles** (Voting/Stacking), and **Dynamic Ensemble Selection (DES)** (using `DESlib`).
 
-***1. Training Execution***
+**1. Training Execution**
 
 To trigger the full training pipeline, use:
 
