@@ -259,8 +259,20 @@ Before running, ensure you uncomment the models you want to test in the `STATIC_
 - **Metric Focus**: Because accuracy is misleading in fraud, the pipeline focuses on `F1-Score` (defined by `TUNING_SCORING`) to balance catching thieves (Recall) without flagging too many innocent customers (Precision).
 
 ---
+## 📓 Notebooks & In-depth Analysis
+The `notebooks/` directory contains the experimental logs and visual analyses of the project. These are organized chronologically to mirror the research workflow.
 
+**Data Understanding (DU) & Preparation (DP)**
+- `1.0-data-quality-inspection`: Initial assessment of the external dataset to identify missing values, data types, and potential inconsistencies.
+- `2.0-data-exploration`: Comprehensive Exploratory Data Analysis (EDA) focused on feature distributions and the extreme skewness of the target class.
+- `3.0-sampling-checks`: A validation notebook to ensure the **Raw** subsampled dataset remains a statistically representative "mirror" of the original big dataset.
+- `4.0-sampling-exploration`: An educational deep-dive into different under-and-over-sampling methods to visualize how they alter the decision boundary.
 
+**Evaluation (EV) & Experimental Results**
+- `5.0-feature-selection-analysis`: A post-hoc analysis of the feature selection process, identifying which variables were most frequently selected during hyperparameter tuning across different models.
+- `6.0-models-evaluation`: Detailed performance breakdown for individual models within a specific experimental configuration.
+- `6.1-models-evaluation-comparison`: Comparison of different models within the same experiment setting, utilizing qualitative plots, quantitative metrics, and **Resampled Corrected t-tests** for statistical significance.
+- `6.2-experimental-schemas-comparison`: An "All-vs-All" comparison across different experiment settings (e.g., comparing Cost-Sensitive + Cluster Centroids vs. Pure Cost-Sensitive) to determine the optimal pipeline.
 
 ---
 
