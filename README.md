@@ -75,11 +75,6 @@ make requirements
 
 The Makefile also includes utility commands for project maintenance:
 
-make clean,Remove __pycache__ and compiled Python files.
-make clean_environment,Completely remove the venv directory.
-make freeze,Update the requirements.txt file with current environment state.
-
-
 | Command                       | Description |
 |-------------------------------| ------------- |
 | ```make help ```              | Display a list of all available commands and their descriptions.|
