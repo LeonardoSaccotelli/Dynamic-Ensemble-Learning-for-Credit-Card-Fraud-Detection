@@ -75,7 +75,7 @@ make requirements
 
 The Makefile also includes utility commands for project maintenance:
 
-| Command                       | Description |
+| Command                       | Description | 
 |-------------------------------| ------------- |
 | ```make help ```              | Display a list of all available commands and their descriptions.|
 | ```make lint ```              | Check code quality and formatting using Ruff. |
